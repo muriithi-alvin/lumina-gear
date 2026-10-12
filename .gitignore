@@ -2,5 +2,6 @@ build/
 out/
 *.o
 *.exe
+*.bmp
 .vscode/
 .idea/

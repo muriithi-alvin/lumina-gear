@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.10)
+project(LuminaGear CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+  add_compile_options(/W4)
+else()
+  add_compile_options(-Wall -Wextra)
+endif()
+
+# Library with everything except main(), so tests can reuse it.
+file(GLOB LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp)
+list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
+add_library(lumina ${LUMINA_SOURCES})
+target_include_directories(lumina PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+# Tests (run with: ctest --output-on-failure)
+enable_testing()
+file(GLOB LUMINA_TESTS ${CMAKE_SOURCE_DIR}/tests/test_*.cpp)
+foreach(test_src ${LUMINA_TESTS})
+  get_filename_component(test_name ${test_src} NAME_WE)
+  add_executable(${test_name} ${test_src})
+  target_link_libraries(${test_name} lumina)
+  add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
