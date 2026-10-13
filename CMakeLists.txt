@@ -15,6 +15,9 @@ list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
 add_library(lumina ${LUMINA_SOURCES})
 target_include_directories(lumina PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(lumina_gear src/main.cpp)
+target_link_libraries(lumina_gear lumina)
+
 # Tests (run with: ctest --output-on-failure)
 enable_testing()
 file(GLOB LUMINA_TESTS ${CMAKE_SOURCE_DIR}/tests/test_*.cpp)
