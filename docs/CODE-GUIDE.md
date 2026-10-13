@@ -120,6 +120,8 @@ Two images appear in the folder where the program runs (usually the `build` fold
 
 Double-click either one to open it in the Windows Photos app.
 
+**Interactive window (Windows only):** press `Ctrl+Shift+P`, run **CMake: Set Launch/Debug Target**, choose `lumina_gear_window`, then run **CMake: Run Without Debugging**. Click **PLAY** to power the machine and click a part to select it.
+
 ### Run the tests
 
 Press `Ctrl+Shift+P`, type **CMake: Run Tests**. The result should say `100% tests passed`.
@@ -133,6 +135,7 @@ cmake -S . -B build
 cmake --build build --config Release
 build\Release\lumina_gear.exe        # with MSVC
 build\lumina_gear.exe                # with MinGW
+build\lumina_gear_window.exe         # interactive window (MinGW; with MSVC it is in build\Release)
 cd build
 ctest -C Release --output-on-failure
 ```
@@ -163,6 +166,8 @@ We do not use any drawing library. Instead:
 3. We build bigger things (gears, bulb, buttons) from those shapes.
 4. At the end we save the grid as a `.bmp` picture file.
 
+On Windows there is also an **interactive window** (`lumina_gear_window`). It draws the same scene with the same code, then asks Windows to show the finished grid on screen and tell us where the mouse clicks. Windows never draws any of the picture itself.
+
 ### How the files depend on each other
 
 ```
@@ -181,7 +186,8 @@ framebuffer   <- the pixel grid. Everything draws into this.
    `-- scene      (puts it all together)        uses everything above
           ^
           |
-        main      (runs the scene, saves the images)
+        main         (runs the scene, saves the images)
+        main_window  (shows the scene in a window, reacts to the mouse; Windows only)
 ```
 
 Lower files know nothing about the files above them. This is why the team can work on different files at the same time.
@@ -200,7 +206,7 @@ Lower files know nothing about the files above them. This is why the team can wo
 
 | File | What it does |
 |---|---|
-| `CMakeLists.txt` | The recipe for building the project. It collects all files in `src/` (except `main.cpp`) into a library called `lumina`. It then builds the program `lumina_gear` (from `main.cpp`) and one test program for each `tests/test_*.cpp` file. Both use the library. The library is shared so that tests and the program use exactly the same code. |
+| `CMakeLists.txt` | The recipe for building the project. It collects all files in `src/` (except `main.cpp` and `main_window.cpp`) into a library called `lumina`. It then builds the program `lumina_gear` (from `main.cpp`), the window `lumina_gear_window` (from `main_window.cpp`, on Windows only) and one test program for each `tests/test_*.cpp` file. All of them use the library, so the tests and the programs run exactly the same code. |
 | `.gitignore` | Lists files Git must not track: the `build/` folder, compiled files and `.bmp` images (they are re-created every run). |
 | `README.md` | Short project overview and build instructions. |
 | `docs/CODE-GUIDE.md` | This guide. |
@@ -341,7 +347,7 @@ Functions:
 - `pointInRect` and `hitButton`: is the mouse inside a rectangle or button?
 - `toolbarSlotAt(x, y)`: which toolbar icon (0 = Motor, 1 = Gear, 2 = Pulley, 3 = Bulb) is under the mouse, or `-1`.
 - **Text:** we have no font library, so letters are drawn from a **5x7 grid of 1s and 0s** (`kGlyphs`). `drawText` colours a small square for every `1`. Only the letters needed (A, E, L, P, R, S, T, U, Y) exist so far. To add a letter, add a new line in `kGlyphs`.
-- `drawButton`, `drawTopBar`, `drawToolbar`: draw the interface using rectangles, lines and the real component drawing functions (small versions as icons).
+- `drawButton`, `drawTopBar`, `drawToolbar`: draw the interface using rectangles, lines and the real component drawing functions (small versions as icons). `drawTopBar` and `drawToolbar` take an optional index of the button or slot under the mouse, which is drawn highlighted. The default `-1` highlights nothing.
 
 ---
 
@@ -350,7 +356,7 @@ Functions:
 **Purpose:** Build the full picture in layers. `renderScene(fb, powered)` runs these steps:
 
 1. **Background:** fill with dark slate grey and draw a faint dot grid.
-2. **Layout:** create the parts and decide where they go. The gears are placed with the touching distance and the second gear uses `meshAngle`.
+2. **Layout:** `sceneParts()` creates the parts and decides where they go. The gears are placed with the touching distance and the second gear uses `meshAngle`.
 3. **Layer 1 (behind the parts):** the shafts (motor to gear, gear to pulley), the belt, and the wire from the small wheel to the bulb.
 4. **Layer 2 (the parts):** motor, gears, pulleys.
 5. **Layer 3 (light):** if `powered`, the glow is drawn. Then the bulb itself.
@@ -359,11 +365,28 @@ Functions:
 
 The order matters. Anything drawn later appears on top of what was drawn before.
 
+**For the interactive window:**
+- `ScenePart` names the six parts (`kPartMotor`, `kPartGear1`, ...), and `sceneParts(powered)` returns them in that order.
+- `scenePartAt(x, y)` returns the part under the mouse, or `-1`. It checks the top-most part first. The motor's centre is its shaft and its body sits to the left, so its click circle is moved left onto the body.
+- `SceneView` holds what the window adds: `powered`, the hovered button and toolbar slot, and the selected part. `renderScene(fb, view)` draws a yellow ring around the selected part after the darkness, so the ring is never dimmed. With the default `SceneView`, the picture is exactly the same as `renderScene(fb, powered)`.
+- `renderScene` is two steps, `renderCanvas` (steps 1 to 6, slow) and `renderInterface` (step 7, quick). Hovering only changes the interface, so the window keeps the canvas and redraws only the interface. This makes hovering about 30 times faster.
+
 ---
 
 ### `src/main.cpp`: the starting point
 
 The program starts here. It renders the scene twice (once with `powered = true`, once with `false`), saves each as a `.bmp` file, prints a message, and exits. It returns `1` (error) if a file cannot be saved.
+
+---
+
+### `src/main_window.cpp`: the interactive window (Windows only)
+
+**Purpose:** Show the scene in a window and react to the mouse. It uses the Win32 API, which comes with Windows, so nothing extra is installed.
+
+- `WinMain` opens a fixed-size window whose inside is exactly 1000 x 600, so one window pixel is one framebuffer pixel, then runs the message loop.
+- `render` draws the scene into our `Framebuffer`, copies it into the 32-bit layout Windows expects, and updates the title bar (power state and selected part). `paint` hands the pixels to Windows with `StretchDIBits`.
+- **Mouse:** moving the mouse updates the hovered button or slot. A click on **PLAY** powers the machine, **PAUSE** turns it off, **RESET** turns it off and clears the selection, and a click on the canvas selects the part under the mouse (`scenePartAt`), or clears the selection on empty space. The cursor becomes a hand over anything clickable.
+- The window only redraws when something visible changed, and only redraws the slow canvas when power or the selection changed.
 
 ---
 
@@ -380,6 +403,7 @@ A single program that checks our code. `CHECK(condition)` prints an error if the
 | `testPolygon` | rectangle count, triangle area, notched shapes, U shape (4 crossings per row), corners on a pixel centre |
 | `testPicking` | inside, on the edge and just outside a circle |
 | `testUiHits` | button and toolbar hit areas |
+| `testSceneInteraction` | each part is picked at its centre, empty canvas picks nothing, the default view matches the plain scene, hover and selection change the picture, and the window's canvas shortcut gives the same picture as a full render |
 | `testGearsMesh` | two meshed gears barely overlap |
 | `testEffects` | darkness, light piercing, glow centre brighter than edge |
 | `testBelt` | belt lines appear on both sides, and none through the middle |
@@ -402,7 +426,7 @@ To add a test, write a new `static void testSomething()` and call it from `main(
 | Next step | What to build on |
 |---|---|
 | **CP2: movement** | Change `Component::angle` every frame. The drawing code already uses it. |
-| **CP2: dragging** | Use `pointInCircle` to find the part under the mouse, then change its `x` and `y`. |
+| **CP2: dragging** | `scenePartAt` already finds the part under the mouse, and the window already receives mouse events. Change the part's `x` and `y` while the button is held. |
 | **CP2: gear ratio** | Output speed = input speed x (input teeth / output teeth). |
 | **CP2: brightness** | Feed the power reaching the bulb into `Light::intensity` and `darkness`. |
 | **CP3: OpenGL** | Keep these files as a reference. Replace `Framebuffer` drawing with OpenGL, but the component data (`Component`) and maths can stay. |

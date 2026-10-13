@@ -13,6 +13,7 @@
 #include "lumina/line.h"
 #include "lumina/picking.h"
 #include "lumina/polygon.h"
+#include "lumina/scene.h"
 #include "lumina/ui.h"
 
 using namespace lumina;
@@ -223,6 +224,64 @@ static void testUiHits() {
     CHECK(toolbarSlotAt(500, 300) == -1);
 }
 
+static bool samePixel(const Framebuffer& a, const Framebuffer& b, int x, int y) {
+    const Color p = a.getPixel(x, y), q = b.getPixel(x, y);
+    return p.r == q.r && p.g == q.g && p.b == q.b;
+}
+
+static bool sameImage(const Framebuffer& a, const Framebuffer& b) {
+    for (int y = 0; y < a.height(); ++y)
+        for (int x = 0; x < a.width(); ++x)
+            if (!samePixel(a, b, x, y)) return false;
+    return true;
+}
+
+static void testSceneInteraction() {
+    // Every part is picked at its own centre (the motor at its body), and
+    // empty canvas picks nothing.
+    const std::vector<Component> parts = sceneParts(false);
+    for (int p = 0; p < kPartCount; ++p) {
+        const int x = static_cast<int>(std::lround(parts[p].x)) - (p == kPartMotor ? parts[p].radius : 0);
+        CHECK(scenePartAt(x, static_cast<int>(std::lround(parts[p].y))) == p);
+    }
+    CHECK(scenePartAt(150, 150) == -1);
+
+    // The default view draws exactly what renderScene(fb, powered) draws.
+    Framebuffer plain(kSceneWidth, kSceneHeight), fb(kSceneWidth, kSceneHeight);
+    renderScene(plain, true);
+    SceneView view;
+    view.powered = true;
+    renderScene(fb, view);
+    CHECK(sameImage(plain, fb));
+
+    // Hovering a button or a toolbar slot, and selecting a part, change the picture.
+    const Button play = playButton();
+    view.hoveredButton = 0;
+    renderScene(fb, view);
+    CHECK(!samePixel(plain, fb, play.x + 2, play.y + 2));
+
+    view.hoveredButton = -1;
+    view.hoveredSlot = 0;
+    renderScene(fb, view);
+    CHECK(!samePixel(plain, fb, 45, kTopBarHeight + 14 + 2));
+
+    // The window's shortcut: a canvas drawn without hover plus the interface
+    // drawn with hover is the same picture as a full render.
+    Framebuffer cached(kSceneWidth, kSceneHeight);
+    SceneView noHover;
+    noHover.powered = true;
+    renderCanvas(cached, noHover);
+    renderInterface(cached, view);
+    CHECK(sameImage(cached, fb));
+
+    view.hoveredSlot = -1;
+    view.selectedPart = kPartPulley;
+    renderScene(fb, view);
+    const Component& pulley = parts[kPartPulley];
+    const int ringX = static_cast<int>(std::lround(pulley.x)) + pulley.radius + 7;
+    CHECK(!samePixel(plain, fb, ringX, static_cast<int>(std::lround(pulley.y))));
+}
+
 static void testGearsMesh() {
     // Two gears placed at the "touching" distance must not overlap in tooth
     // area: the pixels covered by both gears (drawn separately) are tiny.
@@ -292,6 +351,7 @@ int main() {
     testPolygon();
     testPicking();
     testUiHits();
+    testSceneInteraction();
     testGearsMesh();
     testEffects();
     testBelt();
