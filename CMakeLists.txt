@@ -9,14 +9,20 @@ else()
   add_compile_options(-Wall -Wextra)
 endif()
 
-# Library with everything except main(), so tests can reuse it.
+# Library with everything except the two programs, so tests can reuse it.
 file(GLOB LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp)
-list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
+list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp ${CMAKE_SOURCE_DIR}/src/main_window.cpp)
 add_library(lumina ${LUMINA_SOURCES})
 target_include_directories(lumina PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 add_executable(lumina_gear src/main.cpp)
 target_link_libraries(lumina_gear lumina)
+
+# Interactive window (Windows only): shows the same framebuffer and reacts to the mouse.
+if(WIN32)
+  add_executable(lumina_gear_window WIN32 src/main_window.cpp)
+  target_link_libraries(lumina_gear_window lumina user32 gdi32)
+endif()
 
 # Tests (run with: ctest --output-on-failure)
 enable_testing()
