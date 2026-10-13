@@ -47,6 +47,20 @@ cmake --build build
 The program writes two images in the folder you run it from:
 `lumina_gear_cp1_powered.bmp` and `lumina_gear_cp1_unpowered.bmp`.
 
+### Interactive window (Windows only)
+
+On Windows the build also makes `lumina_gear_window`, which shows the same
+scene in a window: `build\lumina_gear_window.exe` (MinGW) or
+`build\Release\lumina_gear_window.exe` (Visual Studio). Every pixel is still
+drawn by our own algorithms. Windows only displays the finished framebuffer
+and reports the mouse.
+
+- **Play** powers the machine, **Pause** turns it off, and **Reset** turns it
+  off and clears the selection.
+- Click a part to select it (Point-in-Circle picking). The title bar shows the
+  power state and the selected part.
+- Buttons and toolbar slots light up under the mouse.
+
 ## Run the tests
 
 ```bash
@@ -56,7 +70,8 @@ ctest --output-on-failure
 
 (With Visual Studio add `-C Release`.) The tests compare our circle, line and
 polygon algorithms against independent reference calculations, and also check
-picking, gear meshing, blending and the user interface hit areas.
+picking, gear meshing, blending, the user interface hit areas, and the
+window's hover and selection drawing.
 
 ## Documentation
 
@@ -68,7 +83,7 @@ picking, gear meshing, blending and the user interface hit areas.
 ```
 include/lumina/   headers (framebuffer, line, circle, polygon, picking,
                   components, belt, ui, effects, scene)
-src/              implementations and main.cpp
+src/              implementations, main.cpp and main_window.cpp
 tests/            self-checking tests (no test library needed)
 docs/             notes and screenshots
 ```

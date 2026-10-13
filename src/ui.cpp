@@ -88,23 +88,25 @@ void drawButton(Framebuffer& fb, const Button& b, bool highlighted) {
              b.label, scale, highlighted ? palette::outline : kButtonText);
 }
 
-void drawTopBar(Framebuffer& fb) {
+void drawTopBar(Framebuffer& fb, int highlightedButton) {
     fillRect(fb, 0, 0, fb.width(), kTopBarHeight, kBarColor);
     drawLine(fb, 0, kTopBarHeight - 1, fb.width() - 1, kTopBarHeight - 1, palette::outline);
-    drawButton(fb, playButton(), false);
-    drawButton(fb, pauseButton(), false);
-    drawButton(fb, resetButton(), false);
+    drawButton(fb, playButton(), highlightedButton == 0);
+    drawButton(fb, pauseButton(), highlightedButton == 1);
+    drawButton(fb, resetButton(), highlightedButton == 2);
 }
 
-void drawToolbar(Framebuffer& fb) {
+void drawToolbar(Framebuffer& fb, int highlightedSlot) {
     fillRect(fb, 0, kTopBarHeight, kToolbarWidth, fb.height() - kTopBarHeight, kToolbarColor);
     drawLine(fb, kToolbarWidth - 1, kTopBarHeight, kToolbarWidth - 1, fb.height() - 1, palette::outline);
 
     for (int i = 0; i < 4; ++i) {
         int x, y;
         toolSlotRect(i, x, y);
-        fillRect(fb, x, y, kToolSlotSize, kToolSlotSize, kSlotColor);
-        drawRect(fb, x, y, kToolSlotSize, kToolSlotSize, palette::outline);
+        const bool lit = i == highlightedSlot;
+        fillRect(fb, x, y, kToolSlotSize, kToolSlotSize, lit ? kButtonColor : kSlotColor);
+        drawRect(fb, x, y, kToolSlotSize, kToolSlotSize, lit ? kAccent : palette::outline);
+        if (lit) drawRect(fb, x + 1, y + 1, kToolSlotSize - 2, kToolSlotSize - 2, kAccent);
         const float cx = x + kToolSlotSize / 2.0f, cy = y + kToolSlotSize / 2.0f;
         switch (i) {
             case 0: drawComponent(fb, makeMotor(cx + 6, cy, 18)); break;

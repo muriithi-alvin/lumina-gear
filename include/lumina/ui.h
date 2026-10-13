@@ -34,7 +34,7 @@ void drawText(Framebuffer& fb, int x, int y, const std::string& text, int scale,
 int textWidth(const std::string& text, int scale);
 
 void drawButton(Framebuffer& fb, const Button& b, bool highlighted);
-void drawTopBar(Framebuffer& fb);
-void drawToolbar(Framebuffer& fb);
+void drawTopBar(Framebuffer& fb, int highlightedButton = -1);   // 0 = Play, 1 = Pause, 2 = Reset
+void drawToolbar(Framebuffer& fb, int highlightedSlot = -1);
 
 }  // namespace lumina
