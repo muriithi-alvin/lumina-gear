@@ -24,20 +24,12 @@ and one area of the final project, and reviews the other pairs' work.
 
 | Pair | Members | Checkpoint owned | Final project area |
 |---|---|---|---|
-| A | Muriithi Alvin (Project Lead), _[name]_ | CP1: Technical Foundation | Interface and testing |
-| B | _[name]_, _[name]_ | CP2: Transformation and Animation | Simulation and animation |
-| C | _[name]_, _[name]_ | CP3: OpenGL Integration and Prototype | Graphics and lighting |
+| A | Muriithi Alvin - 166326 [Project Lead] , Kariuki Mary Wambui - 166382 | CP1: Technical Foundation | Interface and testing |
+| B | Jude Makau - 166487, Tevin Tajeu - 151785 | CP2: Transformation and Animation | Simulation and animation |
+| C | Billy John Igiraneza - 167022, Glenn Karenju - 109511  | CP3: OpenGL Integration and Prototype | Graphics and lighting |
 
 The Project Lead also manages the GitHub repository, creates the checkpoint
 branches, and merges each finished checkpoint into `main`.
-
-**CP1 tasks (Pair A):**
-
-| Partner | Responsibilities |
-|---|---|
-| Muriithi Alvin | CMake build, framebuffer and BMP output, Bresenham line, midpoint circle, polygon fill |
-| _[name]_ | Motor, gear, pulley and bulb shapes, belt, toolbar and buttons, picking, alpha blending and glow |
-| Both | Tests, README and screenshots |
 
 ## Technologies and Tools
 
@@ -164,5 +156,20 @@ code was written with these in mind; see Part 6 of `docs/CODE-GUIDE.md`.
   power state or selection changes. Use a Release build for faster response.
 - **Images are only saved as BMP**, in the folder the program runs from, and
   each run overwrites the previous images.
+
+### Future Innovation Features
+
+Moving parts are the main components of the machine, so we plan to make them
+behave more like real parts:
+
+- **Friction.** Each gear mesh, shaft and belt would lose a small share of the
+  power passing through it. A long chain of parts would then deliver less power
+  and the bulb would glow more dimly. This fits the efficiency rules planned
+  for the final project. A belt carrying too much load could also slip.
+- **Collision.** Parts would not be allowed to overlap. When a part is dragged
+  onto another, a circle-circle test (are the centres closer than the two radii
+  added together?) would detect it and block the move. This uses the same
+  squared-distance maths as Point-in-Circle picking. Two gears placed too close
+  together would jam and stop the machine instead of turning through each other.
 
 See `docs/git-workflow.md` for the team's branch and Pull Request rules.
