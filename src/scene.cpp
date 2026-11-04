@@ -1,5 +1,6 @@
 #include "lumina/scene.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -25,6 +26,12 @@ void drawGrid(Framebuffer& fb) {
 }
 
 void drawShaft(Framebuffer& fb, const Component& a, const Component& b) {
+    const float dx = a.x - b.x;
+    const float dy = a.y - b.y;
+    const float dist = std::hypot(dx, dy);
+    // Only draw shaft if parts are within reasonable distance
+    if (dist > 300.0f) return;
+
     drawThickLine(fb, ri(a.x), ri(a.y), ri(b.x), ri(b.y), 8, palette::metalDark);
     drawThickLine(fb, ri(a.x), ri(a.y) - 2, ri(b.x), ri(b.y) - 2, 2, palette::metalLight);
 }
@@ -53,15 +60,21 @@ std::vector<Component> sceneParts(bool powered) {
     return parts;
 }
 
-int scenePartAt(int px, int py) {
+int scenePartAt(const std::vector<Component>& parts, int px, int py) {
     // Top-most first: the reverse of the drawing order in renderScene().
     const ScenePart order[] = {kPartBulb, kPartWheel, kPartPulley, kPartGear1, kPartGear2, kPartMotor};
-    const std::vector<Component> parts = sceneParts(false);
     for (ScenePart p : order) {
-        const PickCircle pc = pickCircle(parts[p]);
-        if (pointInCircle(px, py, pc.x, pc.y, pc.r)) return p;
+        if (p < static_cast<int>(parts.size())) {
+            const PickCircle pc = pickCircle(parts[p]);
+            if (pointInCircle(px, py, pc.x, pc.y, pc.r)) return p;
+        }
     }
     return -1;
+}
+
+int scenePartAt(int px, int py) {
+    const std::vector<Component> parts = sceneParts(false);
+    return scenePartAt(parts, px, py);
 }
 
 void renderScene(Framebuffer& fb, bool powered) {
@@ -75,12 +88,25 @@ void renderScene(Framebuffer& fb, const SceneView& view) {
     renderInterface(fb, view);
 }
 
+void renderScene(Framebuffer& fb, const std::vector<Component>& parts, const SceneView& view) {
+    renderCanvas(fb, parts, view);
+    renderInterface(fb, view);
+}
+
 void renderCanvas(Framebuffer& fb, const SceneView& view) {
-    const bool powered = view.powered;
+    const std::vector<Component> parts = sceneParts(view.powered);
+    renderCanvas(fb, parts, view);
+}
+
+void renderCanvas(Framebuffer& fb, const std::vector<Component>& parts, const SceneView& view) {
+    const float power = (view.powerLevel >= 0.0f) ? view.powerLevel : (view.powered ? 1.0f : 0.0f);
+    const bool isLit = power > 0.05f;
+
     fb.clear(palette::background);
     drawGrid(fb);
 
-    const std::vector<Component> parts = sceneParts(powered);
+    if (parts.size() < kPartCount) return;
+
     const Component& motor = parts[kPartMotor];
     const Component& gear1 = parts[kPartGear1];
     const Component& gear2 = parts[kPartGear2];
@@ -91,9 +117,26 @@ void renderCanvas(Framebuffer& fb, const SceneView& view) {
     // --- Layer 1: things that sit behind the parts ---
     drawShaft(fb, motor, gear1);       // motor shaft drives gear 1
     drawShaft(fb, gear2, pulley);      // gear 2 turns the pulley
-    drawBelt(fb, pulley.x, pulley.y, pulley.radius, wheel.x, wheel.y, wheel.radius, 4, palette::belt);
-    drawThickLine(fb, ri(wheel.x), ri(wheel.y), ri(bulb.x), ri(bulb.y + bulb.radius * 1.3f), 5,
-                  palette::metalDark);                                           // wheel powers the bulb
+
+    // Belt: only draw if pulleys are separated and within reach
+    const float beltDist = std::hypot(pulley.x - wheel.x, pulley.y - wheel.y);
+    if (beltDist > static_cast<float>(pulley.radius + wheel.radius) && beltDist < 600.0f) {
+        drawBelt(fb, pulley.x, pulley.y, pulley.radius, wheel.x, wheel.y, wheel.radius, 4, palette::belt);
+    }
+
+    // Generator wire to bulb: highlight when power flows
+    const float wireDist = std::hypot(wheel.x - bulb.x, wheel.y - (bulb.y + bulb.radius * 1.3f));
+    if (wireDist < 350.0f) {
+        if (isLit) {
+            drawThickLine(fb, ri(wheel.x), ri(wheel.y), ri(bulb.x), ri(bulb.y + bulb.radius * 1.3f), 6,
+                          Color(180, 110, 30));
+            drawThickLine(fb, ri(wheel.x), ri(wheel.y), ri(bulb.x), ri(bulb.y + bulb.radius * 1.3f), 2,
+                          Color(255, 220, 100));
+        } else {
+            drawThickLine(fb, ri(wheel.x), ri(wheel.y), ri(bulb.x), ri(bulb.y + bulb.radius * 1.3f), 5,
+                          palette::metalDark);
+        }
+    }
 
     // --- Layer 2: the parts ---
     drawMotor(fb, motor);
@@ -102,19 +145,29 @@ void renderCanvas(Framebuffer& fb, const SceneView& view) {
     drawPulley(fb, pulley);
     drawPulley(fb, wheel);
 
-    // --- Layer 3: light ---
-    if (powered) drawGlow(fb, ri(bulb.x), ri(bulb.y), 130, palette::glow, 1.0f);
-    drawBulb(fb, bulb);
+    // --- Layer 3: dynamic light linked to power ---
+    if (isLit) {
+        const int glowRadius = static_cast<int>(40.0f + 90.0f * std::sqrt(power));
+        drawGlow(fb, ri(bulb.x), ri(bulb.y), glowRadius, palette::glow, power);
+    }
+
+    Component drawnBulb = bulb;
+    drawnBulb.lit = isLit;
+    drawBulb(fb, drawnBulb);
 
     std::vector<Light> lights;
-    if (powered) lights.push_back({bulb.x, bulb.y, 560.0f, 1.0f});
+    if (isLit) {
+        lights.push_back({bulb.x, bulb.y, 560.0f, power});
+    }
+    const float darkness = 0.60f - 0.20f * power;
     applyDarkness(fb, kToolbarWidth, kTopBarHeight, fb.width() - kToolbarWidth,
-                  fb.height() - kTopBarHeight, powered ? 0.40f : 0.60f, lights, palette::glow);
+                  fb.height() - kTopBarHeight, darkness, lights, palette::glow);
 
     // --- Selection ring (after the darkness, so it is never dimmed) ---
-    if (view.selectedPart >= 0 && view.selectedPart < kPartCount) {
+    if (view.selectedPart >= 0 && view.selectedPart < static_cast<int>(parts.size())) {
         const PickCircle pc = pickCircle(parts[view.selectedPart]);
-        for (int k = 6; k <= 8; ++k) drawCircle(fb, pc.x, pc.y, pc.r + k, palette::glow);
+        const Color ringCol = view.isMeshed ? Color(100, 240, 140) : palette::glow;
+        for (int k = 6; k <= 8; ++k) drawCircle(fb, pc.x, pc.y, pc.r + k, ringCol);
     }
 }
 
