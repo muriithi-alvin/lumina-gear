@@ -1,5 +1,4 @@
 // Lumina Gear - Scene Renderer
-// Draws both the classic checkpoint scene and the Engine Valvetrain assembly.
 #include <iostream>
 
 #include "lumina/framebuffer.h"
@@ -17,20 +16,21 @@ int main() {
         else { std::cerr << "Could not write " << name << "\n"; ok = false; }
     }
 
-    // Also render an Engine Valvetrain frame
+    // 1. Render Complete Working Engine Power Plant (with Lightbulb glowing)
     {
         Simulation sim(SimulationMode::EngineValvetrain);
         sim.play();
-        // Advance into power stroke combustion
         for (int i = 0; i < 45; ++i) {
             sim.update(0.016f);
         }
 
         SceneView view;
         view.isEngineMode = true;
-        view.powered = true;
+        view.powered = sim.isPowered();
+        view.powerLevel = sim.powerLevel();
         view.crankAngle = sim.crankAngle();
         view.camAngle = sim.camAngle();
+        view.alternatorAngle = sim.crankAngle() * 1.5f;
         view.intakeLift = sim.intakeValveLift();
         view.exhaustLift = sim.exhaustValveLift();
         view.pistonY = sim.pistonY();
@@ -38,13 +38,38 @@ int main() {
         view.stroke = sim.strokeNumber();
         view.combustion = sim.isCombustion();
         view.beltTensioned = sim.isBeltTensioned();
+        view.alternatorDriven = sim.isAlternatorDriven();
+        view.wiringConnected = sim.isWiringConnected();
         view.collision = sim.isInterferenceCollision();
+        view.assemblyComplete = sim.isAssemblyComplete();
         view.rpm = sim.engineRpm();
+        view.alternatorRpm = sim.alternatorRpm();
+        view.voltage = sim.electricalVoltage();
         view.hp = sim.horsepower();
+        view.objective = sim.currentObjective();
 
         Framebuffer fb(kSceneWidth, kSceneHeight);
         renderScene(fb, sim.parts(), view);
-        const char* name = "lumina_valvetrain_engine.bmp";
+        const char* name = "lumina_assembly_complete.bmp";
+        if (fb.saveBMP(name)) std::cout << "Saved " << name << "\n";
+        else { std::cerr << "Could not write " << name << "\n"; ok = false; }
+    }
+
+    // 2. Render Clear Workbench with Blueprint Assembly Targets
+    {
+        Simulation sim(SimulationMode::EngineValvetrain);
+        sim.clearWorkbench();
+
+        SceneView view;
+        view.isEngineMode = true;
+        view.powered = false;
+        view.powerLevel = 0.0f;
+        view.showBlueprints = true;
+        view.objective = sim.currentObjective();
+
+        Framebuffer fb(kSceneWidth, kSceneHeight);
+        renderScene(fb, sim.parts(), view);
+        const char* name = "lumina_assembly_blueprint.bmp";
         if (fb.saveBMP(name)) std::cout << "Saved " << name << "\n";
         else { std::cerr << "Could not write " << name << "\n"; ok = false; }
     }

@@ -1,5 +1,4 @@
-// Lumina Gear - CP2: interactive window with continuous animation and drag-and-drop.
-// Supports both the Engine Valvetrain Timing Assembly and the Classic Machine.
+// Lumina Gear - Interactive Mechanical Power & Electrical Illumination Assembly.
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -25,22 +24,20 @@ using namespace lumina;
 const wchar_t* const kClassicPartNames[kPartCount] = {
     L"Motor", L"Small gear (12 teeth)", L"Large gear (18 teeth)", L"Pulley", L"Belt wheel", L"Lightbulb"};
 
-const wchar_t* const kEnginePartNames[kEnginePartCount] = {
-    L"Crankshaft Drive Sprocket (12T)",
-    L"Camshaft Driven Sprocket (24T)",
-    L"Timing Belt Tensioner Pulley",
-    L"Intake Cam Lobe",
-    L"Exhaust Cam Lobe",
-    L"Intake Poppet Valve",
-    L"Exhaust Poppet Valve",
-    L"Piston & Cylinder Assembly"};
+const wchar_t* const kEnginePartNames[kSlotCount] = {
+    L"12T Crankshaft Sprocket",
+    L"24T Camshaft Sprocket",
+    L"Timing Belt Tensioner",
+    L"4-Stroke Cylinder & Valvetrain",
+    L"Alternator Generator Unit",
+    L"Workshop Illumination Bulb"};
 
 struct App {
     Framebuffer canvas{kSceneWidth, kSceneHeight};
     Framebuffer fb{kSceneWidth, kSceneHeight};
     std::vector<std::uint32_t> screen = std::vector<std::uint32_t>(kSceneWidth * kSceneHeight);
     SceneView view;
-    Simulation sim{SimulationMode::EngineValvetrain};   // Start directly in Engine Valvetrain mode!
+    Simulation sim{SimulationMode::EngineValvetrain};
     bool trackingMouse = false;
     bool isDragging = false;
     int draggedPart = -1;
@@ -56,7 +53,9 @@ int buttonAt(int x, int y) {
     if (hitButton(playButton(), x, y)) return 0;
     if (hitButton(pauseButton(), x, y)) return 1;
     if (hitButton(resetButton(), x, y)) return 2;
-    if (hitButton(modeButton(), x, y)) return 3;
+    if (hitButton(clearButton(), x, y)) return 3;
+    if (hitButton(assembleButton(), x, y)) return 4;
+    if (hitButton(modeButton(), x, y)) return 5;
     return -1;
 }
 
@@ -67,6 +66,8 @@ void syncViewWithSimulation() {
     app.view.isEngineMode = isEngine;
     app.view.powered = app.sim.isPowered();
     app.view.powerLevel = app.sim.powerLevel();
+    app.view.objective = app.sim.currentObjective();
+    app.view.assemblyComplete = app.sim.isAssemblyComplete();
 
     if (isEngine) {
         app.view.crankAngle = app.sim.crankAngle();
@@ -78,8 +79,12 @@ void syncViewWithSimulation() {
         app.view.stroke = app.sim.strokeNumber();
         app.view.combustion = app.sim.isCombustion();
         app.view.beltTensioned = app.sim.isBeltTensioned();
+        app.view.alternatorDriven = app.sim.isAlternatorDriven();
+        app.view.wiringConnected = app.sim.isWiringConnected();
         app.view.collision = app.sim.isInterferenceCollision();
         app.view.rpm = app.sim.engineRpm();
+        app.view.alternatorRpm = app.sim.alternatorRpm();
+        app.view.voltage = app.sim.electricalVoltage();
         app.view.hp = app.sim.horsepower();
         app.view.isMeshed = app.sim.isBeltTensioned();
     } else {
@@ -108,43 +113,22 @@ void render(HWND hwnd, bool canvasChanged) {
 
     std::wstring title;
     if (app.sim.mode() == SimulationMode::EngineValvetrain) {
-        title = L"Lumina Gear - Engine Valvetrain | ";
-        title += app.sim.isPlaying() ? L"RUNNING" : (app.sim.motorSpeed() > 0.05f ? L"COASTING" : L"STOPPED");
-        title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.engineRpm()))) + L" RPM";
-        
-        const char* sName = app.sim.strokeName();
-        std::wstring wsName(sName, sName + strlen(sName));
-        title += L" | Stroke: " + wsName;
-
-        if (app.sim.isInterferenceCollision()) {
-            title += L" [COLLISION CRASH!]";
-        } else if (app.sim.isBeltTensioned()) {
-            title += L" [4-STROKE SYNC: 2:1]";
+        title = L"Lumina Gear - Engine Power Plant | ";
+        if (app.sim.isAssemblyComplete()) {
+            title += app.sim.isPlaying() ? L"RUNNING" : L"READY";
+            title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.engineRpm()))) + L" RPM";
+            title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.electricalVoltage()))) + L"V DC";
+            const int pwr = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
+            title += L" | Light: " + std::to_wstring(pwr) + L"%";
+            if (app.sim.isInterferenceCollision()) title += L" [COLLISION CRASH!]";
         } else {
-            title += L" [BELT SLACK: SLIPPING]";
-        }
-
-        if (app.view.selectedPart >= 0 && app.view.selectedPart < kEnginePartCount) {
-            title += L" | Sel: ";
-            title += kEnginePartNames[app.view.selectedPart];
+            title += L"ASSEMBLY MODE: Build the system from the toolbox!";
         }
     } else {
         title = L"Lumina Gear CP2 - ";
-        title += app.sim.isPlaying() ? L"Running" : (app.sim.motorSpeed() > 0.05f ? L"Coasting" : L"Stopped");
+        title += app.sim.isPlaying() ? L"Running" : L"Stopped";
         const int powerPct = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
         title += L" | Power: " + std::to_wstring(powerPct) + L"%";
-
-        if (app.view.selectedPart >= 0 && app.view.selectedPart < kPartCount) {
-            title += L" | Selected: ";
-            title += kClassicPartNames[app.view.selectedPart];
-            const float spd = app.sim.speed(app.view.selectedPart);
-            wchar_t spdBuf[32];
-            swprintf_s(spdBuf, L" (%.1f rad/s)", spd);
-            title += spdBuf;
-            if (app.view.isMeshed) {
-                title += L" [Meshed]";
-            }
-        }
     }
 
     SetWindowTextW(hwnd, title.c_str());
@@ -155,12 +139,14 @@ void setView(HWND hwnd, const SceneView& v) {
     const SceneView& o = app.view;
     const bool canvasChanged = v.powered != o.powered || v.selectedPart != o.selectedPart ||
                                v.isMeshed != o.isMeshed || v.powerLevel != o.powerLevel;
-    if (!canvasChanged && v.hoveredButton == o.hoveredButton && v.hoveredSlot == o.hoveredSlot) return;
     app.view = v;
-    render(hwnd, canvasChanged);
+    render(hwnd, canvasChanged || v.hoveredSlot != o.hoveredSlot || v.hoveredButton != o.hoveredButton);
 }
 
 void onMouseMove(HWND hwnd, int x, int y) {
+    app.view.mouseX = x;
+    app.view.mouseY = y;
+
     if (app.isDragging && app.draggedPart >= 0) {
         float newX = x - app.dragOffsetX;
         float newY = y - app.dragOffsetY;
@@ -189,7 +175,6 @@ void onMouseMove(HWND hwnd, int x, int y) {
 void onMouseDown(HWND hwnd, int x, int y) {
     const int btn = buttonAt(x, y);
     if (btn >= 0) {
-        SceneView v = app.view;
         switch (btn) {
             case 0: // PLAY
                 app.sim.play();
@@ -199,21 +184,48 @@ void onMouseDown(HWND hwnd, int x, int y) {
                 break;
             case 2: // RESET
                 app.sim.reset();
-                v.selectedPart = -1;
+                app.view.selectedPart = -1;
                 break;
-            case 3: // MODE TOGGLE
+            case 3: // CLEAR (Start assembly from scratch)
+                app.sim.clearWorkbench();
+                app.view.selectedPart = -1;
+                break;
+            case 4: // ASSEMBLE (Auto-build all components)
+                app.sim.assembleAll();
+                app.view.selectedPart = -1;
+                break;
+            case 5: // MODE TOGGLE
                 if (app.sim.mode() == SimulationMode::EngineValvetrain) {
                     app.sim.setMode(SimulationMode::ClassicLumina);
                 } else {
                     app.sim.setMode(SimulationMode::EngineValvetrain);
                 }
-                v.selectedPart = -1;
+                app.view.selectedPart = -1;
                 break;
         }
         render(hwnd, true);
         return;
     }
 
+    // Click on toolbar slot: pick up or spawn component onto canvas
+    const int slot = toolbarSlotAt(x, y);
+    if (slot >= 0 && slot < kSlotCount && app.sim.mode() == SimulationMode::EngineValvetrain) {
+        app.isDragging = true;
+        app.draggedPart = slot;
+        app.view.selectedPart = slot;
+
+        // Position part at mouse release point on canvas
+        const float spawnX = std::max(static_cast<float>(kToolbarWidth + 60), static_cast<float>(x + 80));
+        const float spawnY = static_cast<float>(y);
+        app.sim.placePartAt(slot, spawnX, spawnY);
+        app.dragOffsetX = x - app.sim.part(slot).x;
+        app.dragOffsetY = y - app.sim.part(slot).y;
+        SetCapture(hwnd);
+        render(hwnd, true);
+        return;
+    }
+
+    // Click on canvas: pick up placed component
     if (onCanvas(x, y)) {
         const int hit = scenePartAt(app.sim.parts(), x, y);
         if (hit >= 0) {
@@ -238,7 +250,6 @@ void onMouseUp(HWND hwnd, int, int) {
             app.sim.snapToMesh(app.draggedPart);
         }
         app.isDragging = false;
-        app.draggedPart = -1;
         render(hwnd, true);
     }
 }
@@ -296,6 +307,14 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     app.sim.reset();
                     render(hwnd, true);
                     return 0;
+                case 'C':
+                    app.sim.clearWorkbench();
+                    render(hwnd, true);
+                    return 0;
+                case 'A':
+                    app.sim.assembleAll();
+                    render(hwnd, true);
+                    return 0;
                 case 'M':
                     if (app.sim.mode() == SimulationMode::EngineValvetrain) {
                         app.sim.setMode(SimulationMode::ClassicLumina);
@@ -316,7 +335,8 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     return TRUE;
                 }
                 const bool clickable =
-                    buttonAt(p.x, p.y) >= 0 || (onCanvas(p.x, p.y) && scenePartAt(app.sim.parts(), p.x, p.y) >= 0);
+                    buttonAt(p.x, p.y) >= 0 || toolbarSlotAt(p.x, p.y) >= 0 ||
+                    (onCanvas(p.x, p.y) && scenePartAt(app.sim.parts(), p.x, p.y) >= 0);
                 SetCursor(LoadCursor(nullptr, clickable ? IDC_HAND : IDC_ARROW));
                 return TRUE;
             }
@@ -344,7 +364,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show) {
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     RECT r{0, 0, kSceneWidth, kSceneHeight};
     AdjustWindowRect(&r, style, FALSE);
-    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear - Engine Valvetrain", style,
+    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear - Engine Power Plant", style,
                               CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top,
                               nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 1;

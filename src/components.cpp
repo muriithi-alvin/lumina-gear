@@ -51,6 +51,11 @@ Component makePiston(float x, float y, int radius) {
     return c;
 }
 
+Component makeAlternator(float x, float y, int radius) {
+    Component c; c.type = ComponentType::Alternator; c.x = x; c.y = y; c.radius = radius;
+    return c;
+}
+
 float meshAngle(int teeth, float towardsAngle) {
     return towardsAngle + kPi / teeth;
 }
@@ -276,6 +281,63 @@ void drawPistonAndCylinder(Framebuffer& fb, float cx, float cy, float width, flo
     drawThickLine(fb, icx, pTop + 26, crankPinX, crankPinY, 2, palette::metalLight);
 }
 
+void drawAlternator(Framebuffer& fb, const Component& c, float rotationAngle, bool isGenerating) {
+    const int cx = ri(c.x), cy = ri(c.y), r = c.radius;
+
+    // Mounting bracket tabs
+    fillRect(fb, cx - r - 6, cy - 8, 8, 16, palette::metalDark);
+    drawRect(fb, cx - r - 6, cy - 8, 8, 16, palette::outline);
+    fillRect(fb, cx + r - 2, cy - 8, 8, 16, palette::metalDark);
+    drawRect(fb, cx + r - 2, cy - 8, 8, 16, palette::outline);
+
+    // Main stator housing (cast aluminum)
+    fillCircle(fb, cx, cy, r, palette::metalMid);
+    drawCircle(fb, cx, cy, r, palette::outline);
+
+    // Internal copper windings ring
+    fillCircle(fb, cx, cy, ri(r * 0.78f), palette::copper);
+    drawCircle(fb, cx, cy, ri(r * 0.78f), palette::outline);
+
+    // Stator pole teeth / ventilation louvres
+    const int numPoles = 8;
+    for (int i = 0; i < numPoles; ++i) {
+        const float a = i * 2.0f * kPi / numPoles;
+        const int x0 = ri(cx + r * 0.45f * std::cos(a));
+        const int y0 = ri(cy + r * 0.45f * std::sin(a));
+        const int x1 = ri(cx + r * 0.75f * std::cos(a));
+        const int y1 = ri(cy + r * 0.75f * std::sin(a));
+        drawLine(fb, x0, y0, x1, y1, palette::metalDark);
+    }
+
+    // Rotor pulley & spinning cooling fan blades
+    fillCircle(fb, cx, cy, ri(r * 0.44f), palette::metalLight);
+    drawCircle(fb, cx, cy, ri(r * 0.44f), palette::outline);
+
+    // Fan blades rotating with rotationAngle
+    const int fanBlades = 6;
+    for (int i = 0; i < fanBlades; ++i) {
+        const float a = rotationAngle + i * 2.0f * kPi / fanBlades;
+        const int fx = ri(cx + r * 0.40f * std::cos(a));
+        const int fy = ri(cy + r * 0.40f * std::sin(a));
+        drawLine(fb, cx, cy, fx, fy, palette::metalDark);
+    }
+
+    // Center axle shaft
+    fillCircle(fb, cx, cy, 4, palette::metalDark);
+
+    // Output terminal posts (+ and -)
+    fillCircle(fb, cx - 12, cy - r - 4, 4, Color(220, 50, 40));
+    drawCircle(fb, cx - 12, cy - r - 4, 4, palette::outline);
+    fillCircle(fb, cx + 12, cy - r - 4, 4, Color(30, 35, 40));
+    drawCircle(fb, cx + 12, cy - r - 4, 4, palette::outline);
+
+    // Active power generation electrical aura
+    if (isGenerating) {
+        drawCircle(fb, cx, cy, r + 2, Color(100, 200, 255));
+        drawCircle(fb, cx, cy, r + 3, Color(255, 230, 100));
+    }
+}
+
 void drawComponent(Framebuffer& fb, const Component& c) {
     switch (c.type) {
         case ComponentType::Motor: drawMotor(fb, c); break;
@@ -285,6 +347,7 @@ void drawComponent(Framebuffer& fb, const Component& c) {
         case ComponentType::CamLobe: drawCamLobe(fb, c.x, c.y, static_cast<float>(c.radius), c.angle); break;
         case ComponentType::Valve: drawValve(fb, c.x, c.y, 0.0f, 60.0f, palette::bronze); break;
         case ComponentType::Piston: drawPistonAndCylinder(fb, c.x, c.y, 90.0f, 150.0f, c.y + 40.0f, 0.0f, false); break;
+        case ComponentType::Alternator: drawAlternator(fb, c, c.angle, c.lit); break;
     }
 }
 

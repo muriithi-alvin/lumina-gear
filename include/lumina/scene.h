@@ -1,6 +1,7 @@
 // scene.h - the Lumina scene renderer.
-// Supports both the classic CP1/CP2 workbench and the Engine Valvetrain assembly.
+// Supports both the classic CP1/CP2 workbench and the Engine-to-Electricity Assembly Game.
 #pragma once
+#include <string>
 #include <vector>
 
 #include "lumina/components.h"
@@ -17,16 +18,21 @@ enum ScenePart { kPartMotor, kPartGear1, kPartGear2, kPartPulley, kPartWheel, kP
 // What the interactive window shows on top of the plain scene.
 struct SceneView {
     bool powered = false;
-    int hoveredButton = -1;   // 0 = Play, 1 = Pause, 2 = Reset, 3 = Mode, -1 = none
-    int hoveredSlot = -1;     // toolbar slot under the mouse, -1 = none
-    int selectedPart = -1;    // a ScenePart or EnginePartIndex, -1 = none
-    float powerLevel = -1.0f; // -1 = default; 0.0 to 1.0 when animated
-    bool isMeshed = false;    // visual feedback for gear mesh or belt tension
+    int hoveredButton = -1;   // 0 = Play, 1 = Pause, 2 = Reset, 3 = Clear, 4 = Assemble, 5 = Mode
+    int hoveredSlot = -1;     // toolbar slot under mouse (0..5)
+    int selectedPart = -1;    // part index being dragged/inspected
+    float powerLevel = -1.0f;
+    bool isMeshed = false;
 
-    // Engine Valvetrain specific state
+    // Engine & Assembly specific state
     bool isEngineMode = false;
+    bool showBlueprints = true;
+    int mouseX = 0;
+    int mouseY = 0;
+
     float crankAngle = 0.0f;
     float camAngle = 0.0f;
+    float alternatorAngle = 0.0f;
     float intakeLift = 0.0f;
     float exhaustLift = 0.0f;
     float pistonY = 275.0f;
@@ -34,12 +40,18 @@ struct SceneView {
     int stroke = 1;
     bool combustion = false;
     bool beltTensioned = true;
+    bool alternatorDriven = true;
+    bool wiringConnected = true;
     bool collision = false;
+    bool assemblyComplete = true;
+
     float rpm = 0.0f;
+    float alternatorRpm = 0.0f;
+    float voltage = 0.0f;
     float hp = 0.0f;
+    std::string objective;
 };
 
-// The machine's parts in their scene positions, indexed by ScenePart.
 std::vector<Component> sceneParts(bool powered);
 
 int scenePartAt(int px, int py);

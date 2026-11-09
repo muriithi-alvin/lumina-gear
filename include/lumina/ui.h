@@ -1,4 +1,4 @@
-// ui.h - the toolbar, the top bar with its buttons, and a tiny pixel font.
+// ui.h - the toolbar, top bar buttons, TinkerCAD/Wokwi component info cards, and pixel font.
 #pragma once
 #include <string>
 
@@ -9,8 +9,10 @@ namespace lumina {
 
 // Layout (pixels) shared by drawing and mouse picking.
 constexpr int kTopBarHeight = 48;
-constexpr int kToolbarWidth = 90;
-constexpr int kToolSlotSize = 80;
+constexpr int kToolbarWidth = 92;
+constexpr int kToolSlotSize = 70;
+constexpr int kSlotMargin = 10;
+constexpr int kSlotCount = 6;
 
 struct Button {
     int x, y, w, h;
@@ -21,12 +23,14 @@ struct Button {
 Button playButton();
 Button pauseButton();
 Button resetButton();
+Button clearButton();
+Button assembleButton();
 Button modeButton();
 
 bool pointInRect(int px, int py, int x, int y, int w, int h);
 bool hitButton(const Button& b, int px, int py);
 
-// Which toolbar slot is under the mouse? Returns -1 when none.
+// Which toolbar slot (0..5) is under the mouse? Returns -1 when none.
 int toolbarSlotAt(int px, int py);
 
 // 5x7 pixel font with full alphanumeric support.
@@ -35,6 +39,10 @@ int textWidth(const std::string& text, int scale);
 
 void drawButton(Framebuffer& fb, const Button& b, bool highlighted);
 void drawTopBar(Framebuffer& fb, int highlightedButton = -1, const char* modeLabel = "ENGINE");
-void drawToolbar(Framebuffer& fb, int highlightedSlot = -1, bool isEngineMode = false);
+void drawToolbar(Framebuffer& fb, int highlightedSlot = -1, bool isEngineMode = true);
+
+// TinkerCAD / Wokwi style floating component info card
+void drawComponentInfoCard(Framebuffer& fb, int slotIndex, int mouseX, int mouseY);
+void drawCanvasInspectorCard(Framebuffer& fb, const Component& c, int mouseX, int mouseY, float speed, float power);
 
 }  // namespace lumina

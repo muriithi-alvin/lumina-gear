@@ -1,10 +1,19 @@
-// components.h - Mechanical and Valvetrain components.
+// components.h - Mechanical, Valvetrain, and Electrical components.
 #pragma once
 #include "lumina/framebuffer.h"
 
 namespace lumina {
 
-enum class ComponentType { Motor, Gear, Pulley, Lightbulb, CamLobe, Valve, Piston };
+enum class ComponentType {
+    Motor,
+    Gear,
+    Pulley,
+    Lightbulb,
+    CamLobe,
+    Valve,
+    Piston,
+    Alternator
+};
 
 // Colour palette shared by the whole project.
 namespace palette {
@@ -20,9 +29,13 @@ constexpr Color bulbOn{255, 232, 120};
 constexpr Color glow{255, 214, 90};
 constexpr Color belt{128, 112, 96};
 constexpr Color bronze{180, 120, 60};
+constexpr Color copper{210, 115, 60};
 constexpr Color combustionFire{255, 160, 30};
 constexpr Color intakeAir{70, 160, 230};
 constexpr Color exhaustGas{240, 90, 40};
+constexpr Color blueprintCyan{70, 190, 220};
+constexpr Color wireCopper{200, 120, 50};
+constexpr Color wireGlow{255, 230, 110};
 }  // namespace palette
 
 struct Component {
@@ -31,13 +44,14 @@ struct Component {
     int radius = 30;      // size of the part; also used for mouse picking
     int teeth = 12;       // gears only
     float angle = 0;      // rotation in radians
-    bool lit = false;
+    bool lit = false;     // lightbulb only
+    bool placed = true;   // whether placed on workbench canvas
 };
 
 // Gear sizes follow a fixed "module" so any two gears can mesh.
 constexpr float kGearModule = 6.0f;
-constexpr int kToothAddendum = 3;   // tooth height above the pitch circle
-constexpr int kToothDedendum = 4;   // gap depth below the pitch circle
+constexpr int kToothAddendum = 3;
+constexpr int kToothDedendum = 4;
 
 inline float gearPitchRadius(int teeth) { return kGearModule * teeth / 2.0f; }
 
@@ -46,11 +60,10 @@ Component makeMotor(float x, float y, int radius);
 Component makeGear(float x, float y, int teeth, float angle = 0);
 Component makePulley(float x, float y, int radius);
 Component makeBulb(float x, float y, int radius, bool lit);
-
-// Valvetrain component constructors
 Component makeCamLobe(float x, float y, int radius, float angle = 0);
 Component makeValve(float x, float y, int radius);
 Component makePiston(float x, float y, int radius);
+Component makeAlternator(float x, float y, int radius);
 
 float meshAngle(int teeth, float towardsAngle);
 
@@ -58,6 +71,7 @@ void drawMotor(Framebuffer& fb, const Component& c);
 void drawGear(Framebuffer& fb, const Component& c);
 void drawPulley(Framebuffer& fb, const Component& c);
 void drawBulb(Framebuffer& fb, const Component& c);
+void drawAlternator(Framebuffer& fb, const Component& c, float rotationAngle, bool isGenerating);
 void drawComponent(Framebuffer& fb, const Component& c);
 
 // Valvetrain specific drawing functions

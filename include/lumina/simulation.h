@@ -1,5 +1,5 @@
 // simulation.h - Kinematics and continuous simulation engine for CP2.
-// Supports both Classic Mechanical Power mode and Engine Valvetrain Timing mode.
+// Supports both Classic Mechanical Power mode and the Engine-to-Electricity Assembly Game.
 #pragma once
 
 #include <vector>
@@ -16,7 +16,8 @@ enum class ConnectionType {
     Shaft,       // Rigid common axle: omegaB = omegaA
     GearMesh,    // Meshed gears: omegaB = -omegaA * (teethA / teethB)
     Belt,        // Pulleys connected by open belt: omegaB = omegaA * (radiusA / radiusB)
-    Generator    // Wheel driving lightbulb generator
+    Generator,   // Alternator driving lightbulb electrical circuit
+    Wire         // Electrical wiring
 };
 
 struct Connection {
@@ -25,17 +26,20 @@ struct Connection {
     ConnectionType type = ConnectionType::Shaft;
 };
 
-// Index mappings for Engine Valvetrain mode
+// Index mappings for Engine Valvetrain Assembly
 enum EnginePartIndex {
     kEngineCrank = 0,         // Crankshaft Drive Sprocket (12 teeth)
     kEngineCam = 1,           // Camshaft Driven Sprocket (24 teeth)
     kEngineTensioner = 2,     // Belt Tensioner / Idler Pulley
-    kEngineIntakeCam = 3,     // Intake Cam Lobe
-    kEngineExhaustCam = 4,    // Exhaust Cam Lobe
-    kEngineIntakeValve = 5,   // Intake Poppet Valve
-    kEngineExhaustValve = 6,  // Exhaust Poppet Valve
-    kEnginePiston = 7,        // Piston & Cylinder assembly
-    kEnginePartCount = 8
+    kEngineValvetrain = 3,    // Cylinder & Valvetrain assembly base
+    kEngineAlternator = 4,    // Alternator generator unit
+    kEngineBulb = 5,          // Workshop illumination bulb
+    kEngineIntakeCam = 6,     // Intake Cam Lobe
+    kEngineExhaustCam = 7,    // Exhaust Cam Lobe
+    kEngineIntakeValve = 8,   // Intake Poppet Valve
+    kEngineExhaustValve = 9,  // Exhaust Poppet Valve
+    kEnginePiston = 10,       // Piston & Cylinder
+    kEnginePartCount = 11
 };
 
 class Simulation {
@@ -50,6 +54,15 @@ public:
     void initDefaultScene();
     void initClassicScene();
     void initEngineScene();
+
+    // Assembly game controls
+    void clearWorkbench();          // Remove parts from workbench to build from scratch
+    void assembleAll();            // Auto-assemble complete working system
+    bool isPartPlaced(int slotIndex) const;
+    void setPartPlaced(int slotIndex, bool placed);
+    void placePartAt(int slotIndex, float x, float y);
+    bool isAssemblyComplete() const;
+    const char* currentObjective() const;
 
     // Update simulation by delta-time dt (in seconds)
     void update(float dt);
@@ -88,11 +101,9 @@ public:
     void addConnection(int src, int dst, ConnectionType type);
     void clearConnections();
     const std::vector<Connection>& connections() const { return connections_; }
-
-    // Automatically inspects current parts positions to detect meshes and belt links
     void autoDetectConnections();
 
-    // Engine Valvetrain telemetry and state
+    // Engine Valvetrain telemetry and electrical stats
     float crankAngle() const { return crankAngle_; }
     float camAngle() const { return camAngle_; }
     float intakeValveLift() const { return intakeValveLift_; }
@@ -101,10 +112,14 @@ public:
     float connectingRodAngle() const { return rodAngle_; }
     bool isCombustion() const { return combustionActive_; }
     bool isBeltTensioned() const { return beltTensioned_; }
+    bool isAlternatorDriven() const { return alternatorDriven_; }
+    bool isWiringConnected() const { return wiringConnected_; }
     bool isInterferenceCollision() const { return interferenceCollision_; }
     const char* strokeName() const;
     int strokeNumber() const { return strokeNumber_; }
     float engineRpm() const;
+    float alternatorRpm() const;
+    float electricalVoltage() const;
     float horsepower() const;
 
 private:
@@ -118,20 +133,23 @@ private:
     std::vector<Connection> connections_;
 
     bool playing_ = false;
-    float currentMotorSpeed_ = 0.0f;       // rad/s
-    float targetMotorSpeed_ = 4.0f;        // nominal ~0.64 rev/s
-    float powerLevel_ = 0.0f;              // 0.0 to 1.0
+    float currentMotorSpeed_ = 0.0f;
+    float targetMotorSpeed_ = 4.0f;
+    float powerLevel_ = 0.0f;
 
-    // Engine state variables
-    float crankAngle_ = 0.0f;              // radians
-    float camAngle_ = 0.0f;                // radians (crank / 2 in 4-stroke)
-    float intakeValveLift_ = 0.0f;         // px lift
-    float exhaustValveLift_ = 0.0f;        // px lift
-    float pistonY_ = 275.0f;               // TDC = 275, BDC = 351
-    float rodAngle_ = 0.0f;                // radians
-    int strokeNumber_ = 1;                 // 1: Intake, 2: Compression, 3: Power, 4: Exhaust
+    // Engine & Electrical state variables
+    float crankAngle_ = 0.0f;
+    float camAngle_ = 0.0f;
+    float alternatorAngle_ = 0.0f;
+    float intakeValveLift_ = 0.0f;
+    float exhaustValveLift_ = 0.0f;
+    float pistonY_ = 275.0f;
+    float rodAngle_ = 0.0f;
+    int strokeNumber_ = 1;
     bool combustionActive_ = false;
     bool beltTensioned_ = true;
+    bool alternatorDriven_ = true;
+    bool wiringConnected_ = true;
     bool interferenceCollision_ = false;
 };
 
