@@ -1,10 +1,5 @@
 // Lumina Gear - CP2: interactive window with continuous animation and drag-and-drop.
-// Every pixel is still drawn by our own algorithms into a Framebuffer. Win32
-// is only used to show the finished picture and to report the mouse.
-//   Play: start continuous rotation & power flow
-//   Pause: stop rotation (with inertia/coasting)
-//   Reset: stop and reset machine positions & angles
-//   Click & Drag: translate parts in 2D and reconfigure connections dynamically!
+// Supports both the Engine Valvetrain Timing Assembly and the Classic Machine.
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -27,15 +22,25 @@ namespace {
 
 using namespace lumina;
 
-const wchar_t* const kPartNames[kPartCount] = {
+const wchar_t* const kClassicPartNames[kPartCount] = {
     L"Motor", L"Small gear (12 teeth)", L"Large gear (18 teeth)", L"Pulley", L"Belt wheel", L"Lightbulb"};
 
+const wchar_t* const kEnginePartNames[kEnginePartCount] = {
+    L"Crankshaft Drive Sprocket (12T)",
+    L"Camshaft Driven Sprocket (24T)",
+    L"Timing Belt Tensioner Pulley",
+    L"Intake Cam Lobe",
+    L"Exhaust Cam Lobe",
+    L"Intake Poppet Valve",
+    L"Exhaust Poppet Valve",
+    L"Piston & Cylinder Assembly"};
+
 struct App {
-    Framebuffer canvas{kSceneWidth, kSceneHeight};   // the scene without the interface
+    Framebuffer canvas{kSceneWidth, kSceneHeight};
     Framebuffer fb{kSceneWidth, kSceneHeight};
     std::vector<std::uint32_t> screen = std::vector<std::uint32_t>(kSceneWidth * kSceneHeight);
     SceneView view;
-    Simulation sim;
+    Simulation sim{SimulationMode::EngineValvetrain};   // Start directly in Engine Valvetrain mode!
     bool trackingMouse = false;
     bool isDragging = false;
     int draggedPart = -1;
@@ -45,25 +50,54 @@ struct App {
     LARGE_INTEGER lastTime{};
 };
 
-App app;   // one window, so one copy of the state
+App app;
 
 int buttonAt(int x, int y) {
     if (hitButton(playButton(), x, y)) return 0;
     if (hitButton(pauseButton(), x, y)) return 1;
     if (hitButton(resetButton(), x, y)) return 2;
+    if (hitButton(modeButton(), x, y)) return 3;
     return -1;
 }
 
 bool onCanvas(int x, int y) { return x >= kToolbarWidth && y >= kTopBarHeight; }
 
-// Draw the scene with our own code, then copy it into the 32-bit 0x00RRGGBB
-// layout that Windows expects.
+void syncViewWithSimulation() {
+    const bool isEngine = (app.sim.mode() == SimulationMode::EngineValvetrain);
+    app.view.isEngineMode = isEngine;
+    app.view.powered = app.sim.isPowered();
+    app.view.powerLevel = app.sim.powerLevel();
+
+    if (isEngine) {
+        app.view.crankAngle = app.sim.crankAngle();
+        app.view.camAngle = app.sim.camAngle();
+        app.view.intakeLift = app.sim.intakeValveLift();
+        app.view.exhaustLift = app.sim.exhaustValveLift();
+        app.view.pistonY = app.sim.pistonY();
+        app.view.rodAngle = app.sim.connectingRodAngle();
+        app.view.stroke = app.sim.strokeNumber();
+        app.view.combustion = app.sim.isCombustion();
+        app.view.beltTensioned = app.sim.isBeltTensioned();
+        app.view.collision = app.sim.isInterferenceCollision();
+        app.view.rpm = app.sim.engineRpm();
+        app.view.hp = app.sim.horsepower();
+        app.view.isMeshed = app.sim.isBeltTensioned();
+    } else {
+        if (app.view.selectedPart >= 0) {
+            app.view.isMeshed = app.sim.isPartMeshed(app.view.selectedPart);
+        }
+    }
+}
+
 void render(HWND hwnd, bool canvasChanged) {
+    syncViewWithSimulation();
+
     if (canvasChanged) {
         renderCanvas(app.canvas, app.sim.parts(), app.view);
     }
     app.fb = app.canvas;
     renderInterface(app.fb, app.view);
+
     for (int y = 0; y < kSceneHeight; ++y) {
         for (int x = 0; x < kSceneWidth; ++x) {
             const Color c = app.fb.getPixel(x, y);
@@ -72,27 +106,51 @@ void render(HWND hwnd, bool canvasChanged) {
         }
     }
 
-    std::wstring title = L"Lumina Gear CP2 - ";
-    title += app.sim.isPlaying() ? L"Running" : (app.sim.motorSpeed() > 0.05f ? L"Coasting" : L"Stopped");
-    const int powerPct = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
-    title += L" | Power: " + std::to_wstring(powerPct) + L"%";
+    std::wstring title;
+    if (app.sim.mode() == SimulationMode::EngineValvetrain) {
+        title = L"Lumina Gear - Engine Valvetrain | ";
+        title += app.sim.isPlaying() ? L"RUNNING" : (app.sim.motorSpeed() > 0.05f ? L"COASTING" : L"STOPPED");
+        title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.engineRpm()))) + L" RPM";
+        
+        const char* sName = app.sim.strokeName();
+        std::wstring wsName(sName, sName + strlen(sName));
+        title += L" | Stroke: " + wsName;
 
-    if (app.view.selectedPart >= 0 && app.view.selectedPart < kPartCount) {
-        title += L" | Selected: ";
-        title += kPartNames[app.view.selectedPart];
-        const float spd = app.sim.speed(app.view.selectedPart);
-        wchar_t spdBuf[32];
-        swprintf_s(spdBuf, L" (%.1f rad/s)", spd);
-        title += spdBuf;
-        if (app.view.isMeshed) {
-            title += L" [Meshed]";
+        if (app.sim.isInterferenceCollision()) {
+            title += L" [COLLISION CRASH!]";
+        } else if (app.sim.isBeltTensioned()) {
+            title += L" [4-STROKE SYNC: 2:1]";
+        } else {
+            title += L" [BELT SLACK: SLIPPING]";
+        }
+
+        if (app.view.selectedPart >= 0 && app.view.selectedPart < kEnginePartCount) {
+            title += L" | Sel: ";
+            title += kEnginePartNames[app.view.selectedPart];
+        }
+    } else {
+        title = L"Lumina Gear CP2 - ";
+        title += app.sim.isPlaying() ? L"Running" : (app.sim.motorSpeed() > 0.05f ? L"Coasting" : L"Stopped");
+        const int powerPct = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
+        title += L" | Power: " + std::to_wstring(powerPct) + L"%";
+
+        if (app.view.selectedPart >= 0 && app.view.selectedPart < kPartCount) {
+            title += L" | Selected: ";
+            title += kClassicPartNames[app.view.selectedPart];
+            const float spd = app.sim.speed(app.view.selectedPart);
+            wchar_t spdBuf[32];
+            swprintf_s(spdBuf, L" (%.1f rad/s)", spd);
+            title += spdBuf;
+            if (app.view.isMeshed) {
+                title += L" [Meshed]";
+            }
         }
     }
+
     SetWindowTextW(hwnd, title.c_str());
     InvalidateRect(hwnd, nullptr, FALSE);
 }
 
-// Redraw only when something visible has changed.
 void setView(HWND hwnd, const SceneView& v) {
     const SceneView& o = app.view;
     const bool canvasChanged = v.powered != o.powered || v.selectedPart != o.selectedPart ||
@@ -104,7 +162,6 @@ void setView(HWND hwnd, const SceneView& v) {
 
 void onMouseMove(HWND hwnd, int x, int y) {
     if (app.isDragging && app.draggedPart >= 0) {
-        // 2D Translation: translate part by mouse offset
         float newX = x - app.dragOffsetX;
         float newY = y - app.dragOffsetY;
         const int r = app.sim.part(app.draggedPart).radius;
@@ -112,14 +169,11 @@ void onMouseMove(HWND hwnd, int x, int y) {
         newY = std::clamp(newY, kTopBarHeight + r + 10.0f, static_cast<float>(kSceneHeight - r - 10));
 
         app.sim.setPartPosition(app.draggedPart, newX, newY);
-        app.view.isMeshed = app.sim.isPartMeshed(app.draggedPart);
-        app.view.powered = app.sim.isPowered();
-        app.view.powerLevel = app.sim.powerLevel();
         render(hwnd, true);
         return;
     }
 
-    if (!app.trackingMouse) {   // ask for WM_MOUSELEAVE, so hovering ends when the mouse leaves
+    if (!app.trackingMouse) {
         TRACKMOUSEEVENT tme{};
         tme.cbSize = sizeof(tme);
         tme.dwFlags = TME_LEAVE;
@@ -137,22 +191,26 @@ void onMouseDown(HWND hwnd, int x, int y) {
     if (btn >= 0) {
         SceneView v = app.view;
         switch (btn) {
-            case 0:
+            case 0: // PLAY
                 app.sim.play();
-                v.powered = true;
                 break;
-            case 1:
+            case 1: // PAUSE
                 app.sim.pause();
                 break;
-            case 2:
+            case 2: // RESET
                 app.sim.reset();
-                v.powered = false;
                 v.selectedPart = -1;
-                v.isMeshed = false;
+                break;
+            case 3: // MODE TOGGLE
+                if (app.sim.mode() == SimulationMode::EngineValvetrain) {
+                    app.sim.setMode(SimulationMode::ClassicLumina);
+                } else {
+                    app.sim.setMode(SimulationMode::EngineValvetrain);
+                }
+                v.selectedPart = -1;
                 break;
         }
-        v.powerLevel = app.sim.powerLevel();
-        setView(hwnd, v);
+        render(hwnd, true);
         return;
     }
 
@@ -162,14 +220,12 @@ void onMouseDown(HWND hwnd, int x, int y) {
             app.isDragging = true;
             app.draggedPart = hit;
             app.view.selectedPart = hit;
-            app.view.isMeshed = app.sim.isPartMeshed(hit);
             app.dragOffsetX = x - app.sim.part(hit).x;
             app.dragOffsetY = y - app.sim.part(hit).y;
             SetCapture(hwnd);
             render(hwnd, true);
         } else {
             app.view.selectedPart = -1;
-            app.view.isMeshed = false;
             render(hwnd, true);
         }
     }
@@ -179,11 +235,7 @@ void onMouseUp(HWND hwnd, int, int) {
     if (app.isDragging) {
         ReleaseCapture();
         if (app.draggedPart >= 0) {
-            // Snap to mesh if gear
             app.sim.snapToMesh(app.draggedPart);
-            app.view.isMeshed = app.sim.isPartMeshed(app.draggedPart);
-            app.view.powered = app.sim.isPowered();
-            app.view.powerLevel = app.sim.powerLevel();
         }
         app.isDragging = false;
         app.draggedPart = -1;
@@ -201,13 +253,7 @@ void onTimer(HWND hwnd) {
     app.sim.update(static_cast<float>(dt));
     const bool isMoving = (app.sim.isPlaying() || std::abs(app.sim.motorSpeed()) > 0.01f);
 
-    app.view.powered = app.sim.isPowered();
-    app.view.powerLevel = app.sim.powerLevel();
-    if (app.view.selectedPart >= 0) {
-        app.view.isMeshed = app.sim.isPartMeshed(app.view.selectedPart);
-    }
-
-    if (wasMoving || isMoving) {
+    if (wasMoving || isMoving || app.sim.isCombustion()) {
         render(hwnd, true);
     }
 }
@@ -218,7 +264,7 @@ void paint(HWND hwnd) {
     BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = kSceneWidth;
-    bmi.bmiHeader.biHeight = -kSceneHeight;   // negative: rows run top to bottom, like our framebuffer
+    bmi.bmiHeader.biHeight = -kSceneHeight;
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
@@ -240,6 +286,26 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_LBUTTONDOWN: onMouseDown(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); return 0;
         case WM_LBUTTONUP: onMouseUp(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); return 0;
+        case WM_KEYDOWN:
+            switch (wp) {
+                case VK_SPACE:
+                    app.sim.togglePlay();
+                    render(hwnd, true);
+                    return 0;
+                case 'R':
+                    app.sim.reset();
+                    render(hwnd, true);
+                    return 0;
+                case 'M':
+                    if (app.sim.mode() == SimulationMode::EngineValvetrain) {
+                        app.sim.setMode(SimulationMode::ClassicLumina);
+                    } else {
+                        app.sim.setMode(SimulationMode::EngineValvetrain);
+                    }
+                    render(hwnd, true);
+                    return 0;
+            }
+            break;
         case WM_SETCURSOR:
             if (LOWORD(lp) == HTCLIENT) {
                 POINT p;
@@ -255,7 +321,7 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             break;
-        case WM_ERASEBKGND: return 1;   // WM_PAINT covers the whole window
+        case WM_ERASEBKGND: return 1;
         case WM_PAINT: paint(hwnd); return 0;
         case WM_DESTROY:
             KillTimer(hwnd, 1);
@@ -275,17 +341,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show) {
     wc.lpszClassName = L"LuminaGearWindow";
     if (!RegisterClassW(&wc)) return 1;
 
-    // Fixed size, so one window pixel is one framebuffer pixel.
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     RECT r{0, 0, kSceneWidth, kSceneHeight};
     AdjustWindowRect(&r, style, FALSE);
-    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear CP2", style, CW_USEDEFAULT, CW_USEDEFAULT,
-                              r.right - r.left, r.bottom - r.top, nullptr, nullptr, instance, nullptr);
+    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear - Engine Valvetrain", style,
+                              CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top,
+                              nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 1;
 
     QueryPerformanceFrequency(&app.perfFreq);
     QueryPerformanceCounter(&app.lastTime);
-    SetTimer(hwnd, 1, 16, nullptr);   // ~60 FPS animation loop
+    SetTimer(hwnd, 1, 16, nullptr);
 
     render(hwnd, true);
     ShowWindow(hwnd, show);

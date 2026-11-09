@@ -1,11 +1,10 @@
-// components.h - the four Lumina Gear parts, drawn only with our own
-// primitives (midpoint circle, Bresenham line, scanline polygon fill).
+// components.h - Mechanical and Valvetrain components.
 #pragma once
 #include "lumina/framebuffer.h"
 
 namespace lumina {
 
-enum class ComponentType { Motor, Gear, Pulley, Lightbulb };
+enum class ComponentType { Motor, Gear, Pulley, Lightbulb, CamLobe, Valve, Piston };
 
 // Colour palette shared by the whole project.
 namespace palette {
@@ -20,6 +19,10 @@ constexpr Color bulbOff{128, 142, 150};
 constexpr Color bulbOn{255, 232, 120};
 constexpr Color glow{255, 214, 90};
 constexpr Color belt{128, 112, 96};
+constexpr Color bronze{180, 120, 60};
+constexpr Color combustionFire{255, 160, 30};
+constexpr Color intakeAir{70, 160, 230};
+constexpr Color exhaustGas{240, 90, 40};
 }  // namespace palette
 
 struct Component {
@@ -27,8 +30,8 @@ struct Component {
     float x = 0, y = 0;   // centre
     int radius = 30;      // size of the part; also used for mouse picking
     int teeth = 12;       // gears only
-    float angle = 0;      // rotation in radians (animated in CP2)
-    bool lit = false;     // lightbulb only
+    float angle = 0;      // rotation in radians
+    bool lit = false;
 };
 
 // Gear sizes follow a fixed "module" so any two gears can mesh.
@@ -44,15 +47,23 @@ Component makeGear(float x, float y, int teeth, float angle = 0);
 Component makePulley(float x, float y, int radius);
 Component makeBulb(float x, float y, int radius, bool lit);
 
-// Starting angle for a gear so that a gap (not a tooth) faces its neighbour.
-// `towardsAngle` is the direction from this gear to the neighbour, and the
-// neighbour is assumed to have a tooth pointing straight at this gear.
+// Valvetrain component constructors
+Component makeCamLobe(float x, float y, int radius, float angle = 0);
+Component makeValve(float x, float y, int radius);
+Component makePiston(float x, float y, int radius);
+
 float meshAngle(int teeth, float towardsAngle);
 
 void drawMotor(Framebuffer& fb, const Component& c);
 void drawGear(Framebuffer& fb, const Component& c);
 void drawPulley(Framebuffer& fb, const Component& c);
 void drawBulb(Framebuffer& fb, const Component& c);
-void drawComponent(Framebuffer& fb, const Component& c);  // picks the right one
+void drawComponent(Framebuffer& fb, const Component& c);
+
+// Valvetrain specific drawing functions
+void drawCamLobe(Framebuffer& fb, float cx, float cy, float radius, float angle);
+void drawValve(Framebuffer& fb, float cx, float topY, float lift, float stemLength, Color springColor);
+void drawPistonAndCylinder(Framebuffer& fb, float cx, float cy, float width, float height,
+                           float pistonY, float rodAngle, bool combustion);
 
 }  // namespace lumina

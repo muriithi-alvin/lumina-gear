@@ -21,20 +21,20 @@ struct Button {
 Button playButton();
 Button pauseButton();
 Button resetButton();
+Button modeButton();
 
 bool pointInRect(int px, int py, int x, int y, int w, int h);
 bool hitButton(const Button& b, int px, int py);
 
-// Which toolbar slot (0..3 = Motor, Gear, Pulley, Lightbulb) is under the
-// mouse? Returns -1 when none.
+// Which toolbar slot is under the mouse? Returns -1 when none.
 int toolbarSlotAt(int px, int py);
 
-// 5x7 pixel font (letters needed for the button labels).
+// 5x7 pixel font with full alphanumeric support.
 void drawText(Framebuffer& fb, int x, int y, const std::string& text, int scale, Color c);
 int textWidth(const std::string& text, int scale);
 
 void drawButton(Framebuffer& fb, const Button& b, bool highlighted);
-void drawTopBar(Framebuffer& fb, int highlightedButton = -1);   // 0 = Play, 1 = Pause, 2 = Reset
-void drawToolbar(Framebuffer& fb, int highlightedSlot = -1);
+void drawTopBar(Framebuffer& fb, int highlightedButton = -1, const char* modeLabel = "ENGINE");
+void drawToolbar(Framebuffer& fb, int highlightedSlot = -1, bool isEngineMode = false);
 
 }  // namespace lumina
