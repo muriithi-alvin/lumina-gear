@@ -10,7 +10,7 @@ else()
 endif()
 
 # Library with everything except the two programs, so tests can reuse it.
-file(GLOB LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp)
+file(GLOB LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp ${CMAKE_SOURCE_DIR}/src/levels/*.cpp)
 list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp ${CMAKE_SOURCE_DIR}/src/main_window.cpp)
 add_library(lumina ${LUMINA_SOURCES})
 target_include_directories(lumina PUBLIC ${CMAKE_SOURCE_DIR}/include)

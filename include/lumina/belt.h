@@ -10,4 +10,8 @@ namespace lumina {
 void drawBelt(Framebuffer& fb, float c1x, float c1y, int r1, float c2x, float c2y, int r2,
               int thickness, Color c);
 
+// Draws internal crossed tangent lines between circle 1 and circle 2 (crossed belt for reversing rotation direction).
+void drawCrossedBelt(Framebuffer& fb, float c1x, float c1y, int r1, float c2x, float c2y, int r2,
+                     int thickness, Color c);
+
 }  // namespace lumina

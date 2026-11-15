@@ -1,4 +1,4 @@
-// Lumina Gear - Interactive Mechanical Power & Electrical Illumination Assembly.
+// Lumina Gear - 5-Level Engineering Physics Campaign & Power Generation Game.
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -21,55 +21,69 @@ namespace {
 
 using namespace lumina;
 
-const wchar_t* const kClassicPartNames[kPartCount] = {
-    L"Motor", L"Small gear (12 teeth)", L"Large gear (18 teeth)", L"Pulley", L"Belt wheel", L"Lightbulb"};
-
-const wchar_t* const kEnginePartNames[kSlotCount] = {
-    L"12T Crankshaft Sprocket",
-    L"24T Camshaft Sprocket",
-    L"Timing Belt Tensioner",
-    L"4-Stroke Cylinder & Valvetrain",
-    L"Alternator Generator Unit",
-    L"Workshop Illumination Bulb"};
-
 struct App {
     Framebuffer canvas{kSceneWidth, kSceneHeight};
     Framebuffer fb{kSceneWidth, kSceneHeight};
     std::vector<std::uint32_t> screen = std::vector<std::uint32_t>(kSceneWidth * kSceneHeight);
     SceneView view;
-    Simulation sim{SimulationMode::EngineValvetrain};
+    Simulation sim{SimulationMode::ClassicLumina}; // Starts in Level 1 (Original Assignment)
     bool trackingMouse = false;
     bool isDragging = false;
     int draggedPart = -1;
     float dragOffsetX = 0.0f;
     float dragOffsetY = 0.0f;
+
+    // Modular Tip Card interaction
+    bool isDraggingCard = false;
+    int cardDragOffsetX = 0;
+    int cardDragOffsetY = 0;
+
     LARGE_INTEGER perfFreq{};
     LARGE_INTEGER lastTime{};
 };
 
 App app;
 
-int buttonAt(int x, int y) {
-    if (hitButton(playButton(), x, y)) return 0;
-    if (hitButton(pauseButton(), x, y)) return 1;
-    if (hitButton(resetButton(), x, y)) return 2;
-    if (hitButton(clearButton(), x, y)) return 3;
-    if (hitButton(assembleButton(), x, y)) return 4;
-    if (hitButton(modeButton(), x, y)) return 5;
-    return -1;
-}
-
 bool onCanvas(int x, int y) { return x >= kToolbarWidth && y >= kTopBarHeight; }
 
+// Convert window client pixel coordinates to native framebuffer canvas coordinates (aspect-ratio aware)
+void windowToCanvas(HWND hwnd, int clientX, int clientY, int& canvasX, int& canvasY) {
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    const int w = rc.right - rc.left;
+    const int h = rc.bottom - rc.top;
+    if (w > 0 && h > 0) {
+        const float scale = std::min(static_cast<float>(w) / kSceneWidth,
+                                     static_cast<float>(h) / kSceneHeight);
+        const int destW = static_cast<int>(kSceneWidth * scale);
+        const int destH = static_cast<int>(kSceneHeight * scale);
+        const int destX = (w - destW) / 2;
+        const int destY = (h - destH) / 2;
+
+        if (scale > 0.0001f) {
+            canvasX = std::clamp(static_cast<int>((clientX - destX) / scale), 0, kSceneWidth - 1);
+            canvasY = std::clamp(static_cast<int>((clientY - destY) / scale), 0, kSceneHeight - 1);
+        } else {
+            canvasX = clientX;
+            canvasY = clientY;
+        }
+    } else {
+        canvasX = clientX;
+        canvasY = clientY;
+    }
+}
+
 void syncViewWithSimulation() {
-    const bool isEngine = (app.sim.mode() == SimulationMode::EngineValvetrain);
-    app.view.isEngineMode = isEngine;
+    app.view.currentLevel = app.sim.currentLevel();
+    app.view.levelCompleted = app.sim.isLevelCompleted();
+    app.view.isEngineMode = (app.sim.mode() == SimulationMode::EngineValvetrain);
     app.view.powered = app.sim.isPowered();
     app.view.powerLevel = app.sim.powerLevel();
     app.view.objective = app.sim.currentObjective();
-    app.view.assemblyComplete = app.sim.isAssemblyComplete();
+    app.view.failureReason = app.sim.failureReason();
 
-    if (isEngine) {
+    app.view.crossedBelt = app.sim.isCrossedBelt();
+    if (app.view.isEngineMode) {
         app.view.crankAngle = app.sim.crankAngle();
         app.view.camAngle = app.sim.camAngle();
         app.view.intakeLift = app.sim.intakeValveLift();
@@ -88,6 +102,7 @@ void syncViewWithSimulation() {
         app.view.hp = app.sim.horsepower();
         app.view.isMeshed = app.sim.isBeltTensioned();
     } else {
+        app.view.reversedPolarity = app.sim.isReversedPolarity();
         if (app.view.selectedPart >= 0) {
             app.view.isMeshed = app.sim.isPartMeshed(app.view.selectedPart);
         }
@@ -111,24 +126,23 @@ void render(HWND hwnd, bool canvasChanged) {
         }
     }
 
-    std::wstring title;
-    if (app.sim.mode() == SimulationMode::EngineValvetrain) {
-        title = L"Lumina Gear - Engine Power Plant | ";
-        if (app.sim.isAssemblyComplete()) {
-            title += app.sim.isPlaying() ? L"RUNNING" : L"READY";
-            title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.engineRpm()))) + L" RPM";
-            title += L" | " + std::to_wstring(static_cast<int>(std::lround(app.sim.electricalVoltage()))) + L"V DC";
-            const int pwr = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
-            title += L" | Light: " + std::to_wstring(pwr) + L"%";
-            if (app.sim.isInterferenceCollision()) title += L" [COLLISION CRASH!]";
-        } else {
-            title += L"ASSEMBLY MODE: Build the system from the toolbox!";
-        }
+    std::wstring title = L"Lumina Gear - Level " + std::to_wstring(app.sim.currentLevel()) + L": ";
+    switch (app.sim.currentLevel()) {
+        case 1: title += L"The Lumina Machine (Assignment Baseline)"; break;
+        case 2: title += L"Overdrive Speed Step-Up (Target 12V DC)"; break;
+        case 3: title += L"Direction & Polarity Challenge"; break;
+        case 4: title += L"4-Stroke Valvetrain Timing (Avoid Crash!)"; break;
+        case 5: title += L"Master Engine-to-Electricity Power Plant"; break;
+    }
+
+    if (app.sim.isLevelCompleted()) {
+        title += L" [GOAL SOLVED: 100%!]";
+    } else if (app.sim.isInterferenceCollision()) {
+        title += L" [CRASH: VALVE COLLISION!]";
+    } else if (app.sim.isPlaying()) {
+        title += L" [RUNNING]";
     } else {
-        title = L"Lumina Gear CP2 - ";
-        title += app.sim.isPlaying() ? L"Running" : L"Stopped";
-        const int powerPct = static_cast<int>(std::lround(app.sim.powerLevel() * 100.0f));
-        title += L" | Power: " + std::to_wstring(powerPct) + L"%";
+        title += L" [PAUSED]";
     }
 
     SetWindowTextW(hwnd, title.c_str());
@@ -138,14 +152,31 @@ void render(HWND hwnd, bool canvasChanged) {
 void setView(HWND hwnd, const SceneView& v) {
     const SceneView& o = app.view;
     const bool canvasChanged = v.powered != o.powered || v.selectedPart != o.selectedPart ||
-                               v.isMeshed != o.isMeshed || v.powerLevel != o.powerLevel;
+                               v.isMeshed != o.isMeshed || v.powerLevel != o.powerLevel ||
+                               v.currentLevel != o.currentLevel;
     app.view = v;
     render(hwnd, canvasChanged || v.hoveredSlot != o.hoveredSlot || v.hoveredButton != o.hoveredButton);
 }
 
-void onMouseMove(HWND hwnd, int x, int y) {
+void onMouseMove(HWND hwnd, int clientX, int clientY) {
+    int x, y;
+    windowToCanvas(hwnd, clientX, clientY, x, y);
+
     app.view.mouseX = x;
     app.view.mouseY = y;
+
+    if (app.isDraggingCard) {
+        int cardX, cardY, cardW, cardH;
+        getTipCardBounds(app.sim.parts(), app.view, cardX, cardY, cardW, cardH);
+        int newX = x - app.cardDragOffsetX;
+        int newY = y - app.cardDragOffsetY;
+        newX = std::clamp(newX, kToolbarWidth + 10, kSceneWidth - cardW - 10);
+        newY = std::clamp(newY, kTopBarHeight + 10, kSceneHeight - cardH - 24);
+        app.view.tipCardX = newX;
+        app.view.tipCardY = newY;
+        render(hwnd, true);
+        return;
+    }
 
     if (app.isDragging && app.draggedPart >= 0) {
         float newX = x - app.dragOffsetX;
@@ -172,7 +203,52 @@ void onMouseMove(HWND hwnd, int x, int y) {
     setView(hwnd, v);
 }
 
-void onMouseDown(HWND hwnd, int x, int y) {
+static int slotToPartIndex(int slot, int currentLevel) {
+    if (currentLevel <= 3) {
+        switch (slot) {
+            case 0: return kPartMotor;
+            case 1: return kPartGear1;
+            case 2: return kPartGear2;
+            case 3: return kPartIdler;
+            case 4: return kPartPulley;
+            case 5: return kPartWheel;
+            case 6: return kPartBulb;
+            default: return -1;
+        }
+    } else {
+        switch (slot) {
+            case 0: return kEngineCrank;
+            case 1: return kEngineCam;
+            case 2: return kEngineCam; // 12T test sprocket
+            case 3: return kEngineTensioner;
+            case 4: return kEngineValvetrain;
+            case 5: return kEngineAlternator;
+            case 6: return kEngineBulb;
+            default: return -1;
+        }
+    }
+}
+
+void onMouseDown(HWND hwnd, int clientX, int clientY) {
+    int x, y;
+    windowToCanvas(hwnd, clientX, clientY, x, y);
+
+    // Modular Tip Card interaction (Drag or Toggle Collapse/Expand)
+    int cardX, cardY, cardW, cardH;
+    getTipCardBounds(app.sim.parts(), app.view, cardX, cardY, cardW, cardH);
+    if (x >= cardX && x < cardX + cardW && y >= cardY && y < cardY + cardH) {
+        if (app.view.tipCardMinimized || (x >= cardX + cardW - 65 && y < cardY + 20)) {
+            app.view.tipCardMinimized = !app.view.tipCardMinimized;
+            render(hwnd, true);
+            return;
+        }
+        app.isDraggingCard = true;
+        app.cardDragOffsetX = x - cardX;
+        app.cardDragOffsetY = y - cardY;
+        SetCapture(hwnd);
+        return;
+    }
+
     const int btn = buttonAt(x, y);
     if (btn >= 0) {
         switch (btn) {
@@ -186,20 +262,32 @@ void onMouseDown(HWND hwnd, int x, int y) {
                 app.sim.reset();
                 app.view.selectedPart = -1;
                 break;
-            case 3: // CLEAR (Start assembly from scratch)
+            case 3: // CLEAR (Clear workbench for building)
                 app.sim.clearWorkbench();
                 app.view.selectedPart = -1;
                 break;
-            case 4: // ASSEMBLE (Auto-build all components)
-                app.sim.assembleAll();
+            case 4: // SOLVE (Auto-assemble current level)
+                app.sim.solveLevel();
                 app.view.selectedPart = -1;
                 break;
-            case 5: // MODE TOGGLE
-                if (app.sim.mode() == SimulationMode::EngineValvetrain) {
-                    app.sim.setMode(SimulationMode::ClassicLumina);
-                } else {
-                    app.sim.setMode(SimulationMode::EngineValvetrain);
-                }
+            case 5: // LVL 1
+                app.sim.setLevel(1);
+                app.view.selectedPart = -1;
+                break;
+            case 6: // LVL 2
+                app.sim.setLevel(2);
+                app.view.selectedPart = -1;
+                break;
+            case 7: // LVL 3
+                app.sim.setLevel(3);
+                app.view.selectedPart = -1;
+                break;
+            case 8: // LVL 4
+                app.sim.setLevel(4);
+                app.view.selectedPart = -1;
+                break;
+            case 9: // LVL 5
+                app.sim.setLevel(5);
                 app.view.selectedPart = -1;
                 break;
         }
@@ -207,26 +295,53 @@ void onMouseDown(HWND hwnd, int x, int y) {
         return;
     }
 
-    // Click on toolbar slot: pick up or spawn component onto canvas
+    // Click on toolbar slot: pick up component onto workbench
     const int slot = toolbarSlotAt(x, y);
-    if (slot >= 0 && slot < kSlotCount && app.sim.mode() == SimulationMode::EngineValvetrain) {
-        app.isDragging = true;
-        app.draggedPart = slot;
-        app.view.selectedPart = slot;
+    if (slot >= 0 && slot < kSlotCount) {
+        const int partIdx = slotToPartIndex(slot, app.sim.currentLevel());
+        if (partIdx >= 0 && partIdx < static_cast<int>(app.sim.parts().size())) {
+            if (app.sim.currentLevel() >= 4 && (slot == 1 || slot == 2)) {
+                // Instantly mount / swap sprocket directly on the camshaft at (320, 200)
+                const int teeth = (slot == 2) ? 12 : 24;
+                app.sim.part(kEngineCam).teeth = teeth;
+                app.sim.part(kEngineCam).radius = static_cast<int>(gearPitchRadius(teeth));
+                app.sim.part(kEngineCam).x = 320.0f;
+                app.sim.part(kEngineCam).y = 200.0f;
+                app.sim.part(kEngineCam).placed = true;
+                app.sim.snapToMesh(kEngineCam);
+                app.view.selectedPart = kEngineCam;
+                render(hwnd, true);
+                return;
+            }
 
-        // Position part at mouse release point on canvas
-        const float spawnX = std::max(static_cast<float>(kToolbarWidth + 60), static_cast<float>(x + 80));
-        const float spawnY = static_cast<float>(y);
-        app.sim.placePartAt(slot, spawnX, spawnY);
-        app.dragOffsetX = x - app.sim.part(slot).x;
-        app.dragOffsetY = y - app.sim.part(slot).y;
-        SetCapture(hwnd);
-        render(hwnd, true);
-        return;
+            app.isDragging = true;
+            app.draggedPart = partIdx;
+            app.view.selectedPart = partIdx;
+
+            const float spawnX = std::max(static_cast<float>(kToolbarWidth + 60), static_cast<float>(x + 100));
+            const float spawnY = static_cast<float>(y);
+            app.sim.placePartAt(partIdx, spawnX, spawnY);
+            app.dragOffsetX = x - app.sim.part(partIdx).x;
+            app.dragOffsetY = y - app.sim.part(partIdx).y;
+            SetCapture(hwnd);
+            render(hwnd, true);
+            return;
+        }
     }
 
-    // Click on canvas: pick up placed component
+    // Click on canvas: drag existing placed component
     if (onCanvas(x, y)) {
+        // Click near belt midpoint in classic mode: toggle Crossed Belt!
+        if (app.sim.currentLevel() <= 3 && app.sim.part(kPartPulley).placed && app.sim.part(kPartWheel).placed) {
+            const float midX = (app.sim.part(kPartPulley).x + app.sim.part(kPartWheel).x) * 0.5f;
+            const float midY = (app.sim.part(kPartPulley).y + app.sim.part(kPartWheel).y) * 0.5f;
+            if (std::hypot(static_cast<float>(x) - midX, static_cast<float>(y) - midY) <= 35.0f) {
+                app.sim.toggleCrossedBelt();
+                render(hwnd, true);
+                return;
+            }
+        }
+
         const int hit = scenePartAt(app.sim.parts(), x, y);
         if (hit >= 0) {
             app.isDragging = true;
@@ -243,11 +358,25 @@ void onMouseDown(HWND hwnd, int x, int y) {
     }
 }
 
-void onMouseUp(HWND hwnd, int, int) {
+void onMouseUp(HWND hwnd, int clientX, int clientY) {
+    if (app.isDraggingCard) {
+        ReleaseCapture();
+        app.isDraggingCard = false;
+        render(hwnd, true);
+        return;
+    }
     if (app.isDragging) {
         ReleaseCapture();
+        int x, y;
+        windowToCanvas(hwnd, clientX, clientY, x, y);
         if (app.draggedPart >= 0) {
-            app.sim.snapToMesh(app.draggedPart);
+            if (x < kToolbarWidth + 20) {
+                // Dragged back to toolbox -> Remove/delete component from canvas!
+                app.sim.removePart(app.draggedPart);
+                app.view.selectedPart = -1;
+            } else {
+                app.sim.snapToMesh(app.draggedPart);
+            }
         }
         app.isDragging = false;
         render(hwnd, true);
@@ -272,6 +401,36 @@ void onTimer(HWND hwnd) {
 void paint(HWND hwnd) {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd, &ps);
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    const int w = rc.right - rc.left;
+    const int h = rc.bottom - rc.top;
+
+    const float scale = std::min(static_cast<float>(w) / kSceneWidth,
+                                 static_cast<float>(h) / kSceneHeight);
+    const int destW = static_cast<int>(kSceneWidth * scale);
+    const int destH = static_cast<int>(kSceneHeight * scale);
+    const int destX = (w - destW) / 2;
+    const int destY = (h - destH) / 2;
+
+    // Fill letterbox / pillarbox margins with app background RGB(18, 24, 29)
+    if (destX > 0 || destY > 0) {
+        HBRUSH bgBrush = CreateSolidBrush(RGB(18, 24, 29));
+        if (destX > 0) {
+            RECT leftR = {0, 0, destX, h};
+            RECT rightR = {destX + destW, 0, w, h};
+            FillRect(dc, &leftR, bgBrush);
+            FillRect(dc, &rightR, bgBrush);
+        }
+        if (destY > 0) {
+            RECT topR = {0, 0, w, destY};
+            RECT bottomR = {0, destY + destH, w, h};
+            FillRect(dc, &topR, bgBrush);
+            FillRect(dc, &bottomR, bgBrush);
+        }
+        DeleteObject(bgBrush);
+    }
+
     BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = kSceneWidth;
@@ -279,7 +438,10 @@ void paint(HWND hwnd) {
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
-    StretchDIBits(dc, 0, 0, kSceneWidth, kSceneHeight, 0, 0, kSceneWidth, kSceneHeight,
+
+    SetStretchBltMode(dc, HALFTONE);
+    SetBrushOrgEx(dc, 0, 0, nullptr);
+    StretchDIBits(dc, destX, destY, destW, destH, 0, 0, kSceneWidth, kSceneHeight,
                   app.screen.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
     EndPaint(hwnd, &ps);
 }
@@ -297,8 +459,35 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_LBUTTONDOWN: onMouseDown(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); return 0;
         case WM_LBUTTONUP: onMouseUp(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); return 0;
+        case WM_RBUTTONDOWN: {
+            int x, y;
+            windowToCanvas(hwnd, GET_X_LPARAM(lp), GET_Y_LPARAM(lp), x, y);
+            const int hit = scenePartAt(app.sim.parts(), x, y);
+            if (hit >= 0) {
+                app.sim.removePart(hit);
+                if (app.view.selectedPart == hit) app.view.selectedPart = -1;
+                render(hwnd, true);
+            }
+            return 0;
+        }
         case WM_KEYDOWN:
             switch (wp) {
+                case VK_DELETE:
+                case VK_BACK:
+                    if (app.view.selectedPart >= 0) {
+                        app.sim.removePart(app.view.selectedPart);
+                        app.view.selectedPart = -1;
+                        render(hwnd, true);
+                    }
+                    return 0;
+                case 'B':
+                    app.sim.toggleCrossedBelt();
+                    render(hwnd, true);
+                    return 0;
+                case 'H':
+                    app.view.tipCardMinimized = !app.view.tipCardMinimized;
+                    render(hwnd, true);
+                    return 0;
                 case VK_SPACE:
                     app.sim.togglePlay();
                     render(hwnd, true);
@@ -311,16 +500,12 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     app.sim.clearWorkbench();
                     render(hwnd, true);
                     return 0;
-                case 'A':
-                    app.sim.assembleAll();
+                case 'S':
+                    app.sim.solveLevel();
                     render(hwnd, true);
                     return 0;
-                case 'M':
-                    if (app.sim.mode() == SimulationMode::EngineValvetrain) {
-                        app.sim.setMode(SimulationMode::ClassicLumina);
-                    } else {
-                        app.sim.setMode(SimulationMode::EngineValvetrain);
-                    }
+                case '1': case '2': case '3': case '4': case '5':
+                    app.sim.setLevel(static_cast<int>(wp - '0'));
                     render(hwnd, true);
                     return 0;
             }
@@ -330,13 +515,18 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 POINT p;
                 GetCursorPos(&p);
                 ScreenToClient(hwnd, &p);
-                if (app.isDragging) {
+                int cx, cy;
+                windowToCanvas(hwnd, p.x, p.y, cx, cy);
+                if (app.isDragging || app.isDraggingCard) {
                     SetCursor(LoadCursor(nullptr, IDC_SIZEALL));
                     return TRUE;
                 }
+                int cardX, cardY, cardW, cardH;
+                getTipCardBounds(app.sim.parts(), app.view, cardX, cardY, cardW, cardH);
+                const bool overCard = (cx >= cardX && cx < cardX + cardW && cy >= cardY && cy < cardY + cardH);
                 const bool clickable =
-                    buttonAt(p.x, p.y) >= 0 || toolbarSlotAt(p.x, p.y) >= 0 ||
-                    (onCanvas(p.x, p.y) && scenePartAt(app.sim.parts(), p.x, p.y) >= 0);
+                    overCard || buttonAt(cx, cy) >= 0 || toolbarSlotAt(cx, cy) >= 0 ||
+                    (onCanvas(cx, cy) && scenePartAt(app.sim.parts(), cx, cy) >= 0);
                 SetCursor(LoadCursor(nullptr, clickable ? IDC_HAND : IDC_ARROW));
                 return TRUE;
             }
@@ -361,12 +551,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show) {
     wc.lpszClassName = L"LuminaGearWindow";
     if (!RegisterClassW(&wc)) return 1;
 
-    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    // Resizable window with minimize, maximize, and restore buttons!
+    const DWORD style = WS_OVERLAPPEDWINDOW;
     RECT r{0, 0, kSceneWidth, kSceneHeight};
     AdjustWindowRect(&r, style, FALSE);
-    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear - Engine Power Plant", style,
-                              CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top,
-                              nullptr, nullptr, instance, nullptr);
+
+    // Center window on user's screen
+    const int screenW = GetSystemMetrics(SM_CXSCREEN);
+    const int screenH = GetSystemMetrics(SM_CYSCREEN);
+    const int winW = r.right - r.left;
+    const int winH = r.bottom - r.top;
+    const int posX = std::max(0, (screenW - winW) / 2);
+    const int posY = std::max(0, (screenH - winH) / 2);
+
+    HWND hwnd = CreateWindowW(wc.lpszClassName, L"Lumina Gear - Physics Campaign", style,
+                              posX, posY, winW, winH, nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 1;
 
     QueryPerformanceFrequency(&app.perfFreq);

@@ -5,3 +5,5 @@ out/
 *.bmp
 .vscode/
 .idea/
+levels_for_team/
+*.zip
