@@ -14,7 +14,11 @@ constexpr float kFourPi = 4.0f * kPi;
 }  // namespace
 
 Simulation::Simulation(SimulationMode mode) : mode_(mode) {
-    setLevel(1);
+    if (mode == SimulationMode::EngineValvetrain) {
+        initEngineScene();
+    } else {
+        setLevel(1);
+    }
 }
 
 Simulation::~Simulation() = default;
@@ -605,8 +609,8 @@ void Simulation::solveClassicKinematics() {
                     break;
                 }
                 case ConnectionType::Generator: {
-                    // Check polarity in Level 3
-                    if (currentLevel_ == 3 && srcSpeed < 0.0f) {
+                    // Check polarity in Level 3: Wheel spinning with positive speed means reversed polarity (need CW/negative speed)
+                    if (currentLevel_ == 3 && srcSpeed > 0.0f) {
                         reversedPolarity_ = true;
                         powerLevel_ = 0.0f;
                     } else {

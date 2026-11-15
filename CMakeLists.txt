@@ -9,19 +9,26 @@ else()
   add_compile_options(-Wall -Wextra)
 endif()
 
-# Library with everything except the two programs, so tests can reuse it.
+# Library with everything except the programs, so tests can reuse it.
 file(GLOB LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp ${CMAKE_SOURCE_DIR}/src/levels/*.cpp)
-list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp ${CMAKE_SOURCE_DIR}/src/main_window.cpp)
+list(REMOVE_ITEM LUMINA_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp ${CMAKE_SOURCE_DIR}/src/main_window.cpp ${CMAKE_SOURCE_DIR}/src/main_opengl.cpp)
 add_library(lumina ${LUMINA_SOURCES})
 target_include_directories(lumina PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 add_executable(lumina_gear src/main.cpp)
 target_link_libraries(lumina_gear lumina)
 
-# Interactive window (Windows only): shows the same framebuffer and reacts to the mouse.
+# Interactive software window (Windows only): shows the same framebuffer and reacts to the mouse.
 if(WIN32)
   add_executable(lumina_gear_window WIN32 src/main_window.cpp)
   target_link_libraries(lumina_gear_window lumina user32 gdi32)
+endif()
+
+# Checkpoint 3: OpenGL Hardware-Accelerated Prototype Window
+find_package(OpenGL REQUIRED)
+if(WIN32 AND OPENGL_FOUND)
+  add_executable(lumina_gl WIN32 src/main_opengl.cpp)
+  target_link_libraries(lumina_gl lumina OpenGL::GL user32 gdi32)
 endif()
 
 # Tests (run with: ctest --output-on-failure)
